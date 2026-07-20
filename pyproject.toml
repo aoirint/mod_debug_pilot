@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     "aiohttp>=3.12,<4",
-    "cryptography>=45,<47",
+    "cryptography>=48.0.1,<49",
     "flet[desktop]>=0.85,<0.87",
     "flet-web>=0.85,<0.87",
     "pillow>=11.3,<13",
