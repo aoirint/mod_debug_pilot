@@ -15,14 +15,12 @@ from unittest.mock import patch
 
 import pytest
 
+from mod_debug_pilot.domain import ImportedProfile, ProfileError, ThunderstoreMod
 from mod_debug_pilot.infrastructure.profiles import (
     _SAVE_REDIRECT_RELEASE,
     ByteFetcher,
-    ImportedProfile,
-    ProfileImportError,
     ProfileWorkspace,
     ThunderstoreFetcher,
-    ThunderstoreMod,
     ThunderstoreProfileImporter,
     _confined_target,
     _install_package,
@@ -30,6 +28,8 @@ from mod_debug_pilot.infrastructure.profiles import (
     _save_redirect_asset,
     extract_bundle,
 )
+
+ProfileImportError = ProfileError
 
 
 class FakeContent:
@@ -280,7 +280,14 @@ def test_workspace_materialize_edit_bundle_and_extract(*, tmp_path: Path) -> Non
     local_mod.write_bytes(b"local")
     profile = tmp_path / "draft"
 
-    asyncio.run(workspace.materialize(imported=imported, destination=profile, local_mod=local_mod))
+    asyncio.run(
+        workspace.materialize(
+            imported=imported,
+            destination=profile,
+            local_mod_name=local_mod.name,
+            local_mod_bytes=local_mod.read_bytes(),
+        )
+    )
 
     assert (profile / "winhttp.dll").read_bytes() == b"doorstop"
     assert (profile / "BepInEx/plugins/ModDebugPilotLocal/Local.dll").is_file()
@@ -345,19 +352,32 @@ def test_workspace_rejections_and_cleanup(*, tmp_path: Path) -> None:
     dll = tmp_path / "mod.dll"
     dll.write_bytes(b"x")
     with pytest.raises(ProfileImportError):
-        asyncio.run(workspace.materialize(imported=imported, destination=existing, local_mod=dll))
+        asyncio.run(
+            workspace.materialize(
+                imported=imported,
+                destination=existing,
+                local_mod_name=dll.name,
+                local_mod_bytes=dll.read_bytes(),
+            )
+        )
     with pytest.raises(ProfileImportError):
         asyncio.run(
             workspace.materialize(
                 imported=imported,
                 destination=tmp_path / "bad",
-                local_mod=tmp_path / "not-dll.txt",
+                local_mod_name="not-dll.txt",
+                local_mod_bytes=b"x",
             )
         )
     destination = tmp_path / "incomplete"
     with pytest.raises(ProfileImportError):
         asyncio.run(
-            workspace.materialize(imported=imported, destination=destination, local_mod=dll)
+            workspace.materialize(
+                imported=imported,
+                destination=destination,
+                local_mod_name=dll.name,
+                local_mod_bytes=dll.read_bytes(),
+            )
         )
     assert not destination.exists()
     assert workspace.config_files(profile=tmp_path / "missing") == ()

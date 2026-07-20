@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -23,8 +22,6 @@ from mod_debug_pilot.infrastructure.web_host import (
     discover_controller_hosts,
     preferred_controller_host,
 )
-from mod_debug_pilot.ui.web_controller import WebControllerContext
-from tests.adapters.test_ui import FakePage
 
 _MISDIRECTED_STATUS = 421
 
@@ -91,12 +88,7 @@ class MessageSink:
         self.messages.append(message)
 
 
-def context_stub(*, tmp_path: Path) -> WebControllerContext:
-    """Return an opaque context because page composition is patched."""
-    return cast(WebControllerContext, Mock(data_root=tmp_path))
-
-
-def test_web_host_exports_controller_and_starts_stops(*, tmp_path: Path) -> None:
+def test_web_host_exports_controller_and_starts_stops() -> None:
     """The exported page callback and plain-HTTP lifecycle are owned."""
 
     async def run() -> None:
@@ -108,20 +100,16 @@ def test_web_host_exports_controller_and_starts_stops(*, tmp_path: Path) -> None
             return AsgiStub()
 
         server = ServerStub(_config=Mock())
+        page_main = AsyncMock()
         with (
             patch("mod_debug_pilot.infrastructure.web_host.ft.run", side_effect=fake_run),
             patch("mod_debug_pilot.infrastructure.web_host.uvicorn.Config") as config,
             patch("mod_debug_pilot.infrastructure.web_host.uvicorn.Server", return_value=server),
-            patch(
-                "mod_debug_pilot.infrastructure.web_host.configure_web_controller",
-                AsyncMock(),
-            ) as configure,
         ):
-            context = context_stub(tmp_path=tmp_path)
-            host = FletWebHost(context=context, allowed_hosts=("127.0.0.1",))
+            host = FletWebHost(page_main=page_main, allowed_hosts=("127.0.0.1",))
             callback = cast(Callable[[ft.Page], Awaitable[None]], exported["page_main"])
-            await callback(cast(ft.Page, FakePage()))
-            configure.assert_awaited_once()
+            await callback(cast(ft.Page, Mock()))
+            page_main.assert_awaited_once()
             assert exported["no_cdn"] is True
             await host.start(host="127.0.0.1", port=48951)
             assert "ssl_certfile" not in config.call_args.kwargs
@@ -134,7 +122,7 @@ def test_web_host_exports_controller_and_starts_stops(*, tmp_path: Path) -> None
     asyncio.run(run())
 
 
-def test_web_host_reports_early_exit_and_timeout(*, tmp_path: Path) -> None:
+def test_web_host_reports_early_exit_and_timeout() -> None:
     """Both an exited server and one that never becomes ready fail visibly."""
 
     async def run() -> None:
@@ -146,9 +134,7 @@ def test_web_host_reports_early_exit_and_timeout(*, tmp_path: Path) -> None:
                 return_value=ServerStub(_config=Mock(), starts=False),
             ),
         ):
-            host = FletWebHost(
-                context=context_stub(tmp_path=tmp_path), allowed_hosts=("localhost",)
-            )
+            host = FletWebHost(page_main=AsyncMock(), allowed_hosts=("localhost",))
             with pytest.raises(WebHostError, match="could not start"):
                 await host.start(host="127.0.0.1", port=48951)
 
@@ -166,9 +152,7 @@ def test_web_host_reports_early_exit_and_timeout(*, tmp_path: Path) -> None:
             patch("mod_debug_pilot.infrastructure.web_host.uvicorn.Server", return_value=waiting),
             patch("mod_debug_pilot.infrastructure.web_host.asyncio.sleep", side_effect=fast_sleep),
         ):
-            host = FletWebHost(
-                context=context_stub(tmp_path=tmp_path), allowed_hosts=("localhost",)
-            )
+            host = FletWebHost(page_main=AsyncMock(), allowed_hosts=("localhost",))
             with pytest.raises(WebHostError, match="could not start"):
                 await host.start(host="127.0.0.1", port=48951)
             assert waiting.should_exit

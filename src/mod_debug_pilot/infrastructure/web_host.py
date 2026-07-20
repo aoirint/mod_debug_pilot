@@ -12,8 +12,6 @@ from urllib.parse import urlsplit
 import flet as ft
 import uvicorn
 
-from mod_debug_pilot.ui.web_controller import WebControllerContext, configure_web_controller
-
 type AsgiScope = dict[str, object]
 type AsgiMessage = dict[str, object]
 type AsgiReceive = Callable[[], Awaitable[AsgiMessage]]
@@ -80,14 +78,10 @@ class FletWebHost:
     def __init__(
         self,
         *,
-        context: WebControllerContext,
+        page_main: Callable[[ft.Page], Awaitable[None]],
         allowed_hosts: Iterable[str],
     ) -> None:
-        """Create a stopped trusted-LAN host around Agent-owned services."""
-
-        async def page_main(page: ft.Page) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet invokes page entrypoints positionally.
-            await configure_web_controller(page, context=context)
-
+        """Create a stopped trusted-LAN host around a composed page entry."""
         app = cast(
             AsgiApplication,
             ft.run(

@@ -1,10 +1,16 @@
-"""Console and GUI-script entry point."""
+"""Native Agent GUI entry point."""
 
 from __future__ import annotations
 
-from mod_debug_pilot.agent_main import main
+import flet as ft
 
-__all__ = ["main"]
+from mod_debug_pilot.entrypoints.agent_flet_app import agent_app_main
+
+
+def main() -> None:
+    """Launch the controlled-workstation application."""
+    ft.run(agent_app_main)
+
 
 if __name__ == "__main__":
     main()

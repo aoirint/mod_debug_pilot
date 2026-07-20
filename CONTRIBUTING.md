@@ -3,6 +3,14 @@
 Use Python 3.12 and the locked uv environment. Before submitting a change, run
 the complete procedure in [the development runbook](docs/operations/development.md).
 
+Install the repository-pinned Agent Skills with APM before agent-assisted
+maintenance:
+
+```powershell
+apm install --frozen
+apm audit --ci
+```
+
 Keep domain, application, and presentation modules independent of Flet. New
 external effects require a typed application port, an infrastructure adapter,
 offline tests, and a security review.

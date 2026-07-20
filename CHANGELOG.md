@@ -5,87 +5,59 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-### Removed
-
-- Removed the redundant `SECURITY.md`; contribution policy now owns private
-  vulnerability reporting, while architecture and operations documentation
-  remain the canonical owners of product boundaries and safe-use procedures.
-
 ### Added
 
-- Added event-owned pull-request and `main` CI workflows with direct Windows
-  packaging gates, inspected archives, a SHA-256 artifact manifest, and
-  retained exact-commit build output.
-- Added same-runner Composite Actions for locked Python setup, workflow lint
-  tooling, and Python checks.
-- Added an operator-started native Agent and trusted-LAN HTTP Flet Web controller
-  requiring one-time pairing plus local approval.
-- Added self-signed TLS identity management, certificate-pinned API clients,
-  Ed25519 request signatures, timestamp freshness, and nonce replay protection.
+- Added the native Agent and its operator-started HTTP Flet Web controller with
+  one-time pairing and local approval.
 - Added Thunderstore Profile Code import, bounded package resolution, local DLL
-  upload, configuration editing, verified profile bundles, and Agent install.
-- Added multiple tracked Lethal Company instances with unique debugger ports,
-  screenshot download, individual task termination, and structured artifacts.
-- Added a pinned SaveRedirect artifact that injects a confined per-instance ES3
-  save root, plus journaled normal-save and Doorstop recovery.
-- Added boundary coverage for the ES3 save, auxiliary, and rename-temporary path
-  families used by LCBetterSaves 1.7.3.
-- Added CI verification of the pinned SaveRedirect provenance lock and embedded
-  DLL digest.
-- Added the Flet desktop UI for profile settings, workstation validation,
-  smoke-test execution, cancellation, status, and artifact discovery.
-- Added disposable BepInEx profile preparation, Debug DLL installation,
-  Doorstop launch arguments, ready-marker detection, display capture, and
-  structured run artifacts.
-- Added atomic non-secret settings persistence and collision-safe request IDs.
-- Added strict Ruff, mypy, and 100% statement-and-branch coverage gates.
-- Added a least-privilege, SHA-pinned Windows GitHub Actions quality workflow.
+  selection, config editing, verified profile bundles, and Agent installation.
+- Added tracked multi-instance launch, unique debugger ports, screenshot
+  download, individual process termination, and structured artifacts.
+- Added pinned SaveRedirect integration with per-instance Easy Save 3 roots,
+  LCBetterSaves 1.7.3 path coverage, and journaled normal-save recovery.
+- Added strict Ruff, mypy, 100% statement-and-branch coverage, Windows Flet
+  packaging, archive inspection, and SHA-pinned GitHub Actions.
+- Pinned and deployed the repository's Flet, game-analysis, cross-repository,
+  and maintenance Skills through APM.
 
 ### Changed
 
-- Moved SaveRedirect source, tests, package validation, and Lethal Company v81
-  save-path evidence to its independent repository. ModDebugPilot now consumes
-  only a commit- and SHA-256-pinned plugin artifact.
-- Changed the save-isolation environment variable to `SAVE_REDIRECT_ROOT`, the
-  ready marker to `[SAVEREDIRECT] ready`, and the plugin file to
-  `com.aoirint.SaveRedirect.dll`.
-- Changed project-owned Python APIs, value types, test doubles, and call sites to
-  require keyword arguments; documented only the positional callback contracts
-  imposed by Flet, aiohttp, ASGI, asyncio, and the Python runtime.
-- Enabled Ruff preview enforcement for zero project-owned positional arguments,
-  backed by the Flet project mechanical baseline check.
+- Consolidated remote control onto the single Agent-hosted Flet Web surface;
+  removed the pre-release local-only runner and separate automation API.
+- Aligned the Python package with the Flet architecture boundary:
+  `domain`, `application`, `presentation`, `infrastructure`, `ui`,
+  `composition`, and thin `entrypoints`.
+- Moved SaveRedirect source, tests, package validation, and v81 save-path
+  evidence to its independent repository. ModDebugPilot consumes only its
+  commit- and SHA-256-pinned plugin artifact.
+- Required keyword arguments for project-owned APIs while documenting callback
+  signatures imposed by Flet, aiohttp, ASGI, asyncio, and Python.
 
 ### Fixed
 
-- Fixed Windows CI extraction of the single-line `.python-version` file before
-  configuring the exact locked Python toolchain.
-- Forced UTF-8 mode for the Flet Windows build so Rich progress output does not
-  fail under a runner's legacy console encoding.
+- Fixed Windows CI toolchain parsing and forced UTF-8 output for Flet builds.
+- Ensured listener-start failures shut down recovered runtime state.
 
 ### Security
 
-- Restricted Thunderstore redirects to its HTTPS domain, bounded archive and
-  transfer resources, and rejected traversal, links, digest mismatches, stale
-  signatures, replayed nonces, and unapproved controllers.
-- Required the save redirector ready marker before an instance becomes active;
-  missing or failed isolation terminates the game and restores transactions.
-- Restricted jobs and launch arguments to built-in values; no arbitrary shell
-  or URL input is accepted.
-- Added artifact path containment checks, environment-variable filtering,
-  symbolic-link rejection for settings, and recoverable Doorstop restoration.
-- Guarded the HTTP browser surface with exact Host and same-origin WebSocket
-  checks, an eight-digit single-use code, five-guess limit, and local approval;
-  browser approval is not written to the durable automation-key store.
+- Restricted the HTTP surface with exact Host and same-origin WebSocket checks,
+  an eight-digit single-use code, five-guess limit, and local approval.
+- Restricted Thunderstore redirects to HTTPS Thunderstore hosts and bounded
+  transfers, archives, uploads, configs, and artifacts.
+- Rejected traversal, links, digest mismatches, unsafe identifiers, untracked
+  game processes, and unapproved browser sessions.
+- Required the SaveRedirect ready marker before an instance becomes active;
+  failed isolation terminates the game and restores journaled state.
+- Exposed structured operations only, with no arbitrary shell, URL, environment,
+  registry, firewall, credential, or free-form launch-argument operation.
 
 ### Notes
 
-- The controller requires only a browser; the Agent workstation owns Python,
-  profiles, package materialization, game processes, and recovery state.
+- The controller requires only a browser; the Agent owns Python, profiles,
+  package materialization, game processes, and recovery state.
 - Browser traffic is unencrypted and requires a trusted private LAN plus a
-  source-restricted firewall rule; the signed automation API remains pinned TLS.
-- Live-game verification of the v81 Harmony save patch remains a pre-release
-  validation task; SaveRedirect owns the static evidence and ModDebugPilot
-  retains fail-closed startup.
-- Full-display screenshots can contain notifications or unrelated windows;
-  the workstation must be prepared before a run.
-- Windows packaging, signing, and a stable release channel are not configured.
+  source-restricted firewall rule.
+- Live-game verification of the v81 SaveRedirect patch remains a pre-release
+  task; static evidence and fail-closed startup are implemented.
+- Full-display screenshots can contain unrelated apps and notifications.
+- Code signing and a stable release channel are not configured.

@@ -1,27 +1,41 @@
-"""Select concrete adapters for the desktop application."""
+"""Application composition for the native Agent and browser sessions."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-from mod_debug_pilot.application import JobService, SettingsService
-from mod_debug_pilot.infrastructure import (
-    JsonConfigRepository,
-    LocalJobExecutor,
-    SystemRequestFactory,
-    application_data_dir,
-)
-from mod_debug_pilot.presentation import AppController
+import flet as ft
+
+from mod_debug_pilot.application import BrowserContext, BrowserSession
+from mod_debug_pilot.infrastructure.agent_host import LocalAgentHost
+from mod_debug_pilot.infrastructure.settings import application_data_dir
+from mod_debug_pilot.infrastructure.web_host import FletWebHost
+from mod_debug_pilot.presentation import AgentController, BrowserController
+from mod_debug_pilot.ui.web_controller import configure_web_controller
 
 
-def compose_controller(*, data_dir: Path | None = None) -> AppController:
-    """Create one page-session controller and its concrete effect owners."""
-    resolved_data_dir = data_dir or application_data_dir(environment=os.environ, home=Path.home())
-    settings = SettingsService(
-        repository=JsonConfigRepository(path=resolved_data_dir / "settings.json")
+def compose_agent_controller(*, application_data: Path | None = None) -> AgentController:
+    """Wire one native Agent controller and its per-page browser factory."""
+    resolved_data = application_data
+    if resolved_data is None:
+        resolved_data = application_data_dir(environment=os.environ, home=Path.home()) / "agent"
+
+    def create_web_host(
+        *,
+        context: BrowserContext,
+        allowed_hosts: tuple[str, ...],
+    ) -> FletWebHost:
+        async def page_main(  # noqa: PLR0917 -- keyword-only-exception: Flet invokes page entrypoints positionally.
+            page: ft.Page,
+        ) -> None:
+            controller = BrowserController(session=BrowserSession(context=context))
+            await configure_web_controller(page, controller=controller)
+
+        return FletWebHost(page_main=page_main, allowed_hosts=allowed_hosts)
+
+    host = LocalAgentHost(
+        application_data=resolved_data,
+        web_host_factory=create_web_host,
     )
-    jobs = JobService(
-        executor=LocalJobExecutor.system_default(), request_factory=SystemRequestFactory()
-    )
-    return AppController(settings=settings, jobs=jobs)
+    return AgentController(host=host)

@@ -2,15 +2,14 @@
 
 ## Python graph
 
-`uv.lock` resolves 75 packages from PyPI with hashes and upload timestamps. The
-project-wide `P7D` cooldown is stored as `exclude-newer-span = "P7D"`.
+`uv.lock` resolves 72 packages from PyPI with hashes and upload timestamps. The
+project-wide seven-day cooldown is stored as `exclude-newer = "P7D"`.
 
 Direct runtime dependencies:
 
 - `flet[desktop]` 0.85.3 provides the native Agent runtime and desktop client.
 - `flet-web` 0.85.3 provides the exported browser-session application.
-- `aiohttp` provides the bounded HTTPS API and Thunderstore client.
-- `cryptography` provides RSA TLS identities and Ed25519 request signatures.
+- `aiohttp` provides the bounded Thunderstore HTTPS client.
 - Pillow 12.3.0 provides primary-display capture.
 - PyYAML provides safe parsing of r2modman `export.r2x` metadata.
 - Uvicorn provides the Agent-owned trusted-LAN HTTP ASGI listener.

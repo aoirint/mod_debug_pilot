@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
-from mod_debug_pilot.domain import InstanceSnapshot, InstanceSpec, InstanceStatus
-from mod_debug_pilot.infrastructure.profiles import ProfileImportError, extract_bundle
+from mod_debug_pilot.domain import InstanceSnapshot, InstanceSpec, InstanceStatus, ProfileError
+from mod_debug_pilot.infrastructure.profiles import extract_bundle
 from mod_debug_pilot.infrastructure.runner import (
     AsyncioProcessLauncher,
     PillowScreenCapturer,
@@ -324,9 +324,9 @@ class RemoteAgentRuntime:
     async def install_profile(self, *, profile_id: str, bundle: bytes) -> str:
         """Validate and install one immutable controller-built profile."""
         if len(bundle) > self._config.max_upload_bytes:
-            raise ProfileImportError("Uploaded profile is too large.")
+            raise ProfileError("Uploaded profile is too large.")
         if not _safe_identifier(value=profile_id):
-            raise ProfileImportError("Profile identifier is invalid.")
+            raise ProfileError("Profile identifier is invalid.")
         destination = self._config.data_root / "profiles" / profile_id
         manifest = await asyncio.to_thread(
             extract_bundle,

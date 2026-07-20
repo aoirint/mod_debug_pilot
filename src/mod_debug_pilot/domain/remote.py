@@ -9,7 +9,6 @@ from pathlib import PurePosixPath
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_FINGERPRINT = re.compile(r"^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$")
 
 
 class RemoteValidationError(ValueError):
@@ -32,7 +31,6 @@ class AgentSettings:
 
     agent_name: str = "Lethal Company test agent"
     bind_host: str = "0.0.0.0"  # noqa: S104 - Operator-started LAN listener.
-    api_port: int = 48950
     web_port: int = 48951
     game_executable: str = ""
     data_root: str = ""
@@ -59,13 +57,12 @@ class AgentSettings:
                 raise RemoteValidationError(f"Agent setting {field} is invalid.")
             text_values[field] = raw.strip()
         try:
-            api_port = int(value.get("api_port", 48950))
             web_port = int(value.get("web_port", 48951))
         except (TypeError, ValueError) as error:
-            raise RemoteValidationError("Agent ports must be whole numbers.") from error
-        if not 1024 <= api_port <= 65535 or not 1024 <= web_port <= 65535 or api_port == web_port:
-            raise RemoteValidationError("Agent ports must be distinct values from 1024 to 65535.")
-        return cls(**text_values, api_port=api_port, web_port=web_port)
+            raise RemoteValidationError("Agent Web port must be a whole number.") from error
+        if not 1024 <= web_port <= 65535:
+            raise RemoteValidationError("Agent Web port must be from 1024 to 65535.")
+        return cls(**text_values, web_port=web_port)
 
     def to_mapping(self) -> dict[str, object]:
         """Return the non-secret stable JSON representation."""
@@ -73,7 +70,6 @@ class AgentSettings:
             "schema_version": 1,
             "agent_name": self.agent_name,
             "bind_host": self.bind_host,
-            "api_port": self.api_port,
             "web_port": self.web_port,
             "game_executable": self.game_executable,
             "data_root": self.data_root,
@@ -270,14 +266,3 @@ class InstanceSnapshot:
             )
         except (KeyError, TypeError, ValueError) as error:
             raise RemoteValidationError("Instance snapshot fields are invalid.") from error
-
-
-def normalize_fingerprint(*, value: str) -> str:
-    """Normalize and validate a SHA-256 certificate fingerprint."""
-    compact = value.replace(":", "").replace(" ", "").upper()
-    if len(compact) != 64 or re.fullmatch(r"[0-9A-F]{64}", compact) is None:
-        raise RemoteValidationError("Enter a SHA-256 certificate fingerprint.")
-    normalized = ":".join(compact[index : index + 2] for index in range(0, 64, 2))
-    if _FINGERPRINT.fullmatch(normalized) is None:
-        raise RemoteValidationError("Enter a SHA-256 certificate fingerprint.")
-    return normalized
