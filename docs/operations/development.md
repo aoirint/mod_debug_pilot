@@ -18,6 +18,7 @@ uv run --locked ruff format --check .
 uv run --locked mypy src tests
 uv run --locked pytest
 uv build
+apm audit --ci
 actionlint -color
 pinact run --check --min-age 7
 ```

@@ -1,10 +1,10 @@
 # ModDebugPilot
 
 ModDebugPilot is a Windows test-workstation Agent for Lethal Company mod
-development. The native Agent starts a trusted-LAN HTTP Flet Web controller only
-when the local operator asks it to, displays a one-time pairing code, and
-requires local approval before a browser session can prepare profiles or control
-game instances. A separate pinned-TLS, signed API is available for automation.
+development. The native Flet application starts an HTTP Flet Web controller
+only when the local operator asks it to. A browser session must present a
+short-lived code and receive approval in the native window before it can
+prepare profiles or control game instances.
 
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB)
 ![Flet 0.85.3](https://img.shields.io/badge/Flet-0.85.3-02569B)
@@ -12,87 +12,75 @@ game instances. A separate pinned-TLS, signed API is available for automation.
 ## Capabilities
 
 - Import a Thunderstore App/r2modman Profile Code.
-- Download only exact enabled Thunderstore package versions over bounded HTTPS.
-- Add a locally selected Debug mod DLL and edit imported UTF-8 mod configs.
+- Download exact enabled package versions over bounded HTTPS.
+- Add a browser-selected local Debug DLL and edit imported UTF-8 configs.
 - Install a manifest-and-SHA-256-verified profile on the Agent.
 - Launch, list, screenshot, and stop multiple tracked Lethal Company instances.
-- Give every instance a distinct injected ES3 save root through a pinned build
-  of the independent [SaveRedirect](https://github.com/aoirint/SaveRedirect)
-  BepInEx 5 plugin.
-- Journal and restore normal saves plus the shared Doorstop bootstrap after the
+- Give each instance an isolated Easy Save 3 root through the pinned independent
+  [SaveRedirect](https://github.com/aoirint/SaveRedirect) BepInEx plugin.
+- Journal and restore normal saves and the shared Doorstop bootstrap after the
   final instance, shutdown, startup recovery, or failed launch.
-- Expose a signed, certificate-pinned automation API without an arbitrary shell,
-  URL, environment-variable, or launch-argument operation.
 
-The browser computer needs only a current browser. Profile assembly and mod
-selection are initiated from the Web UI, while package materialization, runtime
-state, and game processes remain owned by the Agent workstation.
+The controller computer needs only a current browser. Python, package caches,
+profiles, game processes, and recovery state remain on the Agent workstation.
 
 ## Requirements
 
 - Windows 11 x64 on the Agent workstation
 - A dedicated non-admin user logged into the physical console session
 - Steam and Lethal Company v81 installed by the operator
-- Network isolation or a host firewall restricting ports 48950 and 48951 to the
-  intended LAN controller
+- A trusted private LAN and a host firewall restricting TCP 48951 to the
+  intended controller
 - Python 3.12 and [uv](https://docs.astral.sh/uv/) for source development
 
 ## Start the Agent
 
 ```powershell
 uv sync --locked --all-groups
-uv run --locked moddebugpilot-agent
+uv run --locked moddebugpilot
 ```
 
 In the native window:
 
 1. Set the game executable, Agent data, artifacts, and normal-save directory.
-2. Enter a strong passphrase. It encrypts the automation API TLS private key and
-   is not persisted.
-3. Select **Start LAN listeners**.
-4. Open the displayed HTTP Controller URL from the trusted private LAN.
-5. Select **Open pairing window**, enter its one-time code in the browser, then
-   approve the named request in the native Agent window.
+2. Select **Start controller**.
+3. Open the displayed Controller URL from the trusted private LAN.
+4. Select **Open pairing window**, submit its code in the browser, and approve
+   the named request in the native Agent window.
 
-The browser UI deliberately uses HTTP so no self-signed certificate installation
-or public tunnel is required. HTTP does **not** hide DLLs, configuration values,
-screenshots, or session traffic from another device able to observe or alter the
-LAN. Restrict port 48951 to the intended controller with Windows Firewall and use
-this mode only on a trusted private network. The automation API on port 48950
-retains certificate pinning, TLS, Ed25519 signatures, fresh timestamps, and nonce
-replay protection.
-
-The `moddebugpilot` and `moddebugpilot-agent` entry points currently launch the
-same native Agent application.
+The controller deliberately uses HTTP so the browser needs neither a locally
+trusted certificate nor a public tunnel. HTTP does not protect DLLs, configs,
+screenshots, or session traffic from another device able to observe or alter
+the LAN. Do not expose the listener to the internet, a guest network, or an
+untrusted shared network.
 
 ## Safety boundary
 
-The Agent accepts structured profile, instance, screenshot, and artifact
-operations only. It does not accept arbitrary commands. Profile ZIP paths,
-package redirects, response sizes, file counts, upload sizes, artifact paths,
-identifiers, signatures, timestamps, and nonces are validated before effects.
+The Agent accepts only structured profile, instance, screenshot, and artifact
+operations. It has no arbitrary shell, URL, environment-variable, or free-form
+launch-argument operation. Profile paths, redirects, resource sizes, file
+counts, uploads, artifacts, identifiers, and Web origins are validated before
+effects.
 
-Save isolation is fail-closed: a game process must emit
-`[SAVEREDIRECT] ready` from the pinned SaveRedirect plugin within 30
-seconds or the Agent terminates it. Normal saves are also moved under a journaled
-outer transaction as defense in depth and are restored automatically after the
-last instance.
+Save isolation is fail-closed: a game process must emit `[SAVEREDIRECT] ready`
+from the pinned SaveRedirect plugin within 30 seconds or the Agent terminates
+it. Normal saves are moved under a journaled outer transaction as defense in
+depth and restored automatically after the last instance.
 
-The redirect boundary also covers the Easy Save 3 file families used by
-LCBetterSaves 1.7.3 (`LCSaveFileN`, `LGU_N.json`, and its rename temporaries), so
-additional slots remain inside the instance save root. This is statically and
-boundary-tested for v81; a live-game compatibility smoke test remains required.
+The redirect boundary covers the Easy Save 3 file families used by
+LCBetterSaves 1.7.3 (`LCSaveFileN`, `LGU_N.json`, and rename temporaries), so
+additional slots remain inside the instance root. Static and boundary tests
+cover Lethal Company v81; a live-game compatibility smoke test is still needed.
 
 Full-display screenshots and logs can contain private information. Disable
 notifications and review artifacts before sharing them.
 
-See the [developer documentation](docs/README.md) for the protocol, v81 save
-evidence, dependency provenance, workstation recovery, and verification steps.
+See the [developer documentation](docs/README.md) for architecture, security,
+dependency provenance, workstation recovery, and verification.
 
 ## Status and license
 
-The project is pre-release (`0.1.0.dev0`). The application, pinned SaveRedirect
-artifact, wheel, and sdist are verified locally; a signed Windows installer and
-release channel are not configured.
+The project is pre-release (`0.1.0.dev0`). Windows packaging is verified in CI;
+code signing and a stable release channel are not configured.
 
 [MIT](LICENSE)
