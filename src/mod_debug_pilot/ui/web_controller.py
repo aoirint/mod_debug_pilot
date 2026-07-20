@@ -45,7 +45,7 @@ class WebControllerContext:
 class WebControllerView:
     """Render a controller session that has no local Python installation."""
 
-    def __init__(self, page: ft.Page, *, context: WebControllerContext) -> None:
+    def __init__(self, page: ft.Page, *, context: WebControllerContext) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
         """Create one initially unauthorized browser session."""
         self._page = page
         self._context = context
@@ -148,7 +148,7 @@ class WebControllerView:
                     ),
                 ),
                 self._card(
-                    "Connection approval",
+                    title="Connection approval",
                     controls=[
                         self.controller_name,
                         self.pairing_code,
@@ -157,7 +157,7 @@ class WebControllerView:
                     ],
                 ),
                 self._card(
-                    "Thunderstore profile and local build",
+                    title="Thunderstore profile and local build",
                     controls=[
                         self.profile_code,
                         self.profile_id,
@@ -166,7 +166,7 @@ class WebControllerView:
                     ],
                 ),
                 self._card(
-                    "Mod configuration editor",
+                    title="Mod configuration editor",
                     controls=[
                         self.config_selector,
                         ft.Row([load_config, save_config, install_button]),
@@ -174,7 +174,7 @@ class WebControllerView:
                     ],
                 ),
                 self._card(
-                    "Instances",
+                    title="Instances",
                     controls=[
                         ft.ResponsiveRow(
                             [
@@ -203,7 +203,7 @@ class WebControllerView:
         )
 
     @staticmethod
-    def _card(title: str, *, controls: list[ft.Control]) -> ft.Control:
+    def _card(*, title: str, controls: list[ft.Control]) -> ft.Control:
         return ft.Card(
             content=ft.Container(
                 padding=20,
@@ -214,11 +214,13 @@ class WebControllerView:
             )
         )
 
-    async def _request_pairing(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._request_pairing_action)
+    async def _request_pairing(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._request_pairing_action)
 
     async def _request_pairing_action(self) -> None:
-        identity = create_ephemeral_controller_identity(self.controller_name.value or "")
+        identity = create_ephemeral_controller_identity(name=self.controller_name.value or "")
         self._pairing = self._context.pairing.request(
             code=self.pairing_code.value or "",
             controller_id=identity.controller_id,
@@ -228,14 +230,16 @@ class WebControllerView:
         )
         self.status.value = "Connection requested. Approve it in the Agent native GUI."
 
-    async def _check_approval(self, _event: ft.Event[ft.OutlinedButton]) -> None:
-        await self._perform(self._check_approval_action)
+    async def _check_approval(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
+        await self._perform(action=self._check_approval_action)
 
     async def _check_approval_action(self) -> None:
         if self._pairing is None:
             raise AuthenticationError("Request a connection first.")
         status = self._context.pairing.status(
-            self._pairing.request_id,
+            request_id=self._pairing.request_id,
             poll_token=self._pairing.poll_token,
         )
         if status is None:
@@ -251,7 +255,9 @@ class WebControllerView:
         self.config_editor.disabled = True
         self.status.value = "Approved. This browser session can now control the Agent."
 
-    async def _choose_mod(self, _event: ft.Event[ft.OutlinedButton]) -> None:
+    async def _choose_mod(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
         if not self._approved:
             return
         files = await self._picker.pick_files(
@@ -272,15 +278,17 @@ class WebControllerView:
             self.local_mod.value = f"{self._local_mod_name} ({len(raw):,} bytes)"
         self._page.update()
 
-    async def _import_profile(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._import_profile_action)
+    async def _import_profile(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._import_profile_action)
 
     async def _import_profile_action(self) -> None:
         self._require_approved()
         profile_id = self._validated_profile_id()
         if self._local_mod_bytes is None:
             raise ProfileImportError("Select a locally built DLL first.")
-        imported = await self._context.importer.import_code(self.profile_code.value or "")
+        imported = await self._context.importer.import_code(code=self.profile_code.value or "")
         draft = self._context.data_root / "controller-drafts" / profile_id
         if draft.exists():
             raise ProfileImportError("A draft with this Profile ID already exists.")
@@ -290,7 +298,7 @@ class WebControllerView:
         local_mod.write_bytes(self._local_mod_bytes)
         try:
             await self._context.workspace.materialize(
-                imported,
+                imported=imported,
                 destination=draft,
                 local_mod=local_mod,
             )
@@ -298,7 +306,7 @@ class WebControllerView:
             local_mod.unlink(missing_ok=True)
         self._draft = draft
         self._imported = imported
-        configs = self._context.workspace.config_files(draft)
+        configs = self._context.workspace.config_files(profile=draft)
         root = draft / "BepInEx" / "config"
         options = [
             ft.DropdownOption(key=path.relative_to(root).as_posix(), text=path.name)
@@ -311,28 +319,36 @@ class WebControllerView:
             f"Draft prepared with {len(imported.mods)} declared mods and {len(configs)} configs."
         )
 
-    async def _load_config(self, _event: ft.Event[ft.OutlinedButton]) -> None:
-        await self._perform(self._load_config_action)
+    async def _load_config(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
+        await self._perform(action=self._load_config_action)
 
     async def _load_config_action(self) -> None:
         draft, relative = self._selected_config()
-        self.config_editor.value = self._context.workspace.read_config(draft, relative=relative)
+        self.config_editor.value = self._context.workspace.read_config(
+            profile=draft, relative=relative
+        )
         self.status.value = f"Loaded {relative}."
 
-    async def _save_config(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._save_config_action)
+    async def _save_config(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._save_config_action)
 
     async def _save_config_action(self) -> None:
         draft, relative = self._selected_config()
         self._context.workspace.write_config(
-            draft,
+            profile=draft,
             relative=relative,
             content=self.config_editor.value or "",
         )
         self.status.value = f"Saved {relative}."
 
-    async def _install_profile(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._install_profile_action)
+    async def _install_profile(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._install_profile_action)
 
     async def _install_profile_action(self) -> None:
         self._require_approved()
@@ -343,21 +359,23 @@ class WebControllerView:
         bundle = bundles / f"{profile_id}.mdp-profile"
         manifest = await asyncio.to_thread(
             self._context.workspace.create_bundle,
-            self._draft,
+            profile=self._draft,
             profile_name=profile_id,
             source_mods=(mod.dependency for mod in self._imported.mods),
             destination=bundle,
         )
         installed_name = await self._context.runtime.install_profile(
-            profile_id,
+            profile_id=profile_id,
             bundle=bundle.read_bytes(),
         )
         self.status.value = f"Installed {installed_name}: {len(manifest.files)} verified files."
         shutil.rmtree(self._draft)
         self._draft = None
 
-    async def _launch(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._launch_action)
+    async def _launch(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._launch_action)
 
     async def _launch_action(self) -> None:
         self._require_approved()
@@ -366,20 +384,22 @@ class WebControllerView:
             profile_id=self._validated_profile_id(),
             debugger_port=int(self.debugger_port.value or ""),
         )
-        await self._context.runtime.launch(spec)
+        await self._context.runtime.launch(spec=spec)
         await self._refresh_action()
-        self._increment_instance_fields(spec)
+        self._increment_instance_fields(spec=spec)
 
-    async def _refresh(self, _event: ft.Event[ft.OutlinedButton]) -> None:
-        await self._perform(self._refresh_action)
+    async def _refresh(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
+        await self._perform(action=self._refresh_action)
 
     async def _refresh_action(self) -> None:
         self._require_approved()
         snapshots = await self._context.runtime.list_instances()
-        self.instances.controls = [self._instance_row(item) for item in snapshots]
+        self.instances.controls = [self._instance_row(snapshot=item) for item in snapshots]
         self.status.value = f"Loaded {len(snapshots)} instance records."
 
-    def _instance_row(self, snapshot: InstanceSnapshot) -> ft.Control:
+    def _instance_row(self, *, snapshot: InstanceSnapshot) -> ft.Control:
         color = (
             ft.Colors.GREEN_700
             if snapshot.status is InstanceStatus.RUNNING
@@ -395,13 +415,13 @@ class WebControllerView:
                         ft.Text(f"PID {snapshot.pid or '-'}", col=2),
                         ft.OutlinedButton(
                             "Screenshot",
-                            on_click=self._capture_handler(snapshot.instance_id),
+                            on_click=self._capture_handler(instance_id=snapshot.instance_id),
                             disabled=snapshot.status is not InstanceStatus.RUNNING,
                             col=2,
                         ),
                         ft.Button(
                             "Task kill",
-                            on_click=self._stop_handler(snapshot.instance_id),
+                            on_click=self._stop_handler(instance_id=snapshot.instance_id),
                             disabled=snapshot.status is not InstanceStatus.RUNNING,
                             col=2,
                         ),
@@ -410,28 +430,28 @@ class WebControllerView:
             )
         )
 
-    def _capture_handler(self, instance_id: str) -> Callable[[], Awaitable[None]]:
+    def _capture_handler(self, *, instance_id: str) -> Callable[[], Awaitable[None]]:
         async def handler() -> None:
             async def action() -> None:
-                path = await self._context.runtime.capture(instance_id)
+                path = await self._context.runtime.capture(instance_id=instance_id)
                 await self._picker.save_file(file_name=path.name, src_bytes=path.read_bytes())
                 self.status.value = f"Downloaded screenshot {path.name}."
 
-            await self._perform(action)
+            await self._perform(action=action)
 
         return handler
 
-    def _stop_handler(self, instance_id: str) -> Callable[[], Awaitable[None]]:
+    def _stop_handler(self, *, instance_id: str) -> Callable[[], Awaitable[None]]:
         async def handler() -> None:
             async def action() -> None:
-                await self._context.runtime.stop(instance_id)
+                await self._context.runtime.stop(instance_id=instance_id)
                 await self._refresh_action()
 
-            await self._perform(action)
+            await self._perform(action=action)
 
         return handler
 
-    async def _perform(self, action: Callable[[], Awaitable[None]]) -> None:
+    async def _perform(self, *, action: Callable[[], Awaitable[None]]) -> None:
         self.busy.visible = True
         self._page.update()
         try:
@@ -459,7 +479,7 @@ class WebControllerView:
             raise ProfileImportError("Select a configuration file.")
         return self._draft, self.config_selector.value
 
-    def _increment_instance_fields(self, spec: InstanceSpec) -> None:
+    def _increment_instance_fields(self, *, spec: InstanceSpec) -> None:
         match = re.search(r"(\d+)$", spec.name)
         if match:
             number = int(match.group(1)) + 1
@@ -467,10 +487,10 @@ class WebControllerView:
         self.debugger_port.value = str(spec.debugger_port + 1)
 
 
-async def configure_web_controller(page: ft.Page, *, context: WebControllerContext) -> None:
+async def configure_web_controller(page: ft.Page, *, context: WebControllerContext) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
     """Configure and mount one browser controller page."""
     page.title = "ModDebugPilot Controller"
     page.theme = ft.Theme(color_scheme_seed=ft.Colors.BLUE_700, use_material3=True)
     page.padding = 0
-    view = WebControllerView(page, context=context)
+    view = WebControllerView(page=page, context=context)
     page.add(view.build())

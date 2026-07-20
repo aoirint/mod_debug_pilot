@@ -63,7 +63,7 @@ class FakeProcess:
 class FakeLauncher:
     """Record a launch or raise a configured error."""
 
-    def __init__(self, process: FakeProcess, *, error: OSError | None = None) -> None:
+    def __init__(self, *, process: FakeProcess, error: OSError | None = None) -> None:
         """Configure launch behavior."""
         self.process = process
         self.error = error
@@ -72,8 +72,8 @@ class FakeLauncher:
 
     async def launch(
         self,
-        executable: Path,
         *,
+        executable: Path,
         arguments: tuple[str, ...],
         working_directory: Path,
         environment: Mapping[str, str],
@@ -103,7 +103,7 @@ class FakeClock:
         """Return deterministic elapsed seconds."""
         return self.elapsed
 
-    async def sleep(self, seconds: float) -> None:
+    async def sleep(self, *, seconds: float) -> None:
         """Advance time and yield to cancellation."""
         self.elapsed += seconds
         await asyncio.sleep(0)
@@ -116,7 +116,7 @@ class FakeCapturer:
         """Create a capture recorder."""
         self.destination: Path | None = None
 
-    async def capture(self, destination: Path) -> None:
+    async def capture(self, *, destination: Path) -> None:
         """Write a small deterministic artifact."""
         self.destination = destination
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -130,14 +130,14 @@ class BlockingCapturer:
         """Create the started signal."""
         self.started = asyncio.Event()
 
-    async def capture(self, destination: Path) -> None:
+    async def capture(self, *, destination: Path) -> None:
         """Block forever after recording entry."""
         del destination
         self.started.set()
         await asyncio.Event().wait()
 
 
-def make_config(tmp_path: Path, *, marker_in_log: bool = False) -> PilotConfig:
+def make_config(*, tmp_path: Path, marker_in_log: bool = False) -> PilotConfig:
     """Create a complete local BepInEx profile fixture."""
     game_dir = tmp_path / "game"
     game_dir.mkdir()
@@ -164,14 +164,14 @@ def make_config(tmp_path: Path, *, marker_in_log: bool = False) -> PilotConfig:
     )
 
 
-def make_request(config: PilotConfig, *, kind: JobKind, job_id: str) -> JobRequest:
+def make_request(*, config: PilotConfig, kind: JobKind, job_id: str) -> JobRequest:
     """Create a deterministic local request."""
     return JobRequest(job_id=job_id, kind=kind, created_at="created", config=config)
 
 
 def make_executor(
-    launcher: FakeLauncher,
     *,
+    launcher: FakeLauncher,
     capturer: ScreenCapturer | None = None,
     clock: RuntimeClock | None = None,
     platform_name: str = "win32",
@@ -186,14 +186,16 @@ def make_executor(
     )
 
 
-def test_validation_job_records_success_and_every_missing_requirement(tmp_path: Path) -> None:
+def test_validation_job_records_success_and_every_missing_requirement(*, tmp_path: Path) -> None:
     """Validation produces artifacts without launching and reports all missing inputs."""
-    config = make_config(tmp_path)
-    launcher = FakeLauncher(FakeProcess())
-    executor = make_executor(launcher)
+    config = make_config(tmp_path=tmp_path)
+    launcher = FakeLauncher(process=FakeProcess())
+    executor = make_executor(launcher=launcher)
 
     success = asyncio.run(
-        executor.execute(make_request(config, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="valid")),
+        executor.execute(
+            request=make_request(config=config, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="valid")
+        ),
     )
     assert success.outcome is JobOutcome.SUCCEEDED
     assert launcher.arguments is None
@@ -208,8 +210,10 @@ def test_validation_job_records_success_and_every_missing_requirement(tmp_path: 
         artifact_root=str(tmp_path / "missing-artifacts"),
     )
     failure = asyncio.run(
-        make_executor(launcher, platform_name="linux").execute(
-            make_request(missing, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="invalid"),
+        make_executor(launcher=launcher, platform_name="linux").execute(
+            request=make_request(
+                config=missing, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="invalid"
+            ),
         ),
     )
     assert failure.outcome is JobOutcome.FAILED
@@ -217,17 +221,19 @@ def test_validation_job_records_success_and_every_missing_requirement(tmp_path: 
     assert "BepInEx preloader" in failure.message
 
 
-def test_smoke_test_prepares_launch_captures_and_restores(tmp_path: Path) -> None:
+def test_smoke_test_prepares_launch_captures_and_restores(*, tmp_path: Path) -> None:
     """A ready marker captures the display and restores pre-existing bootstrap files."""
-    config = make_config(tmp_path, marker_in_log=True)
+    config = make_config(tmp_path=tmp_path, marker_in_log=True)
     game_dir = Path(config.game_executable).parent
     (game_dir / "winhttp.dll").write_bytes(b"original")
-    launcher = FakeLauncher(FakeProcess())
+    launcher = FakeLauncher(process=FakeProcess())
     capturer = FakeCapturer()
-    executor = make_executor(launcher, capturer=capturer)
+    executor = make_executor(launcher=launcher, capturer=capturer)
 
     result = asyncio.run(
-        executor.execute(make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="ready")),
+        executor.execute(
+            request=make_request(config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="ready")
+        ),
     )
 
     assert result.outcome is JobOutcome.SUCCEEDED
@@ -250,17 +256,18 @@ def test_smoke_test_prepares_launch_captures_and_restores(tmp_path: Path) -> Non
     [(1, JobOutcome.FAILED), (None, JobOutcome.TIMED_OUT)],
 )
 def test_smoke_test_reports_early_exit_and_timeout(
+    *,
     tmp_path: Path,
     returncode: int | None,
     expected: JobOutcome,
 ) -> None:
     """Process exit and absent ready markers have distinct outcomes."""
-    config = make_config(tmp_path)
+    config = make_config(tmp_path=tmp_path)
     process = FakeProcess(returncode=returncode)
 
     result = asyncio.run(
-        make_executor(FakeLauncher(process)).execute(
-            make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="wait"),
+        make_executor(launcher=FakeLauncher(process=process)).execute(
+            request=make_request(config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="wait"),
         ),
     )
 
@@ -268,16 +275,16 @@ def test_smoke_test_reports_early_exit_and_timeout(
     assert process.terminated is True
 
 
-def test_smoke_cancellation_writes_result_and_restores(tmp_path: Path) -> None:
+def test_smoke_cancellation_writes_result_and_restores(*, tmp_path: Path) -> None:
     """Cancellation is re-raised only after partial result and bootstrap cleanup."""
 
     async def scenario() -> None:
-        config = make_config(tmp_path, marker_in_log=True)
+        config = make_config(tmp_path=tmp_path, marker_in_log=True)
         process = FakeProcess()
         capturer = BlockingCapturer()
-        executor = make_executor(FakeLauncher(process), capturer=capturer)
-        request = make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="cancel")
-        task = asyncio.create_task(executor.execute(request))
+        executor = make_executor(launcher=FakeLauncher(process=process), capturer=capturer)
+        request = make_request(config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="cancel")
+        task = asyncio.create_task(executor.execute(request=request))
         await capturer.started.wait()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -290,12 +297,14 @@ def test_smoke_cancellation_writes_result_and_restores(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def test_smoke_maps_launch_failure_and_preserves_foreign_backup(tmp_path: Path) -> None:
+def test_smoke_maps_launch_failure_and_preserves_foreign_backup(*, tmp_path: Path) -> None:
     """Local process failure is stable and an unowned backup is never modified."""
-    config = make_config(tmp_path)
+    config = make_config(tmp_path=tmp_path)
     failure = asyncio.run(
-        make_executor(FakeLauncher(FakeProcess(), error=OSError())).execute(
-            make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="launch-failure"),
+        make_executor(launcher=FakeLauncher(process=FakeProcess(), error=OSError())).execute(
+            request=make_request(
+                config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="launch-failure"
+            ),
         ),
     )
     assert failure.outcome is JobOutcome.FAILED
@@ -305,23 +314,23 @@ def test_smoke_maps_launch_failure_and_preserves_foreign_backup(tmp_path: Path) 
     sentinel = backup / "sentinel"
     sentinel.write_text("owned elsewhere", encoding="utf-8")
     collision = asyncio.run(
-        make_executor(FakeLauncher(FakeProcess())).execute(
-            make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="foreign"),
+        make_executor(launcher=FakeLauncher(process=FakeProcess())).execute(
+            request=make_request(config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="foreign"),
         ),
     )
     assert collision.outcome is JobOutcome.FAILED
     assert sentinel.read_text(encoding="utf-8") == "owned elsewhere"
 
 
-def test_smoke_restores_bootstrap_after_partial_install_failure(tmp_path: Path) -> None:
+def test_smoke_restores_bootstrap_after_partial_install_failure(*, tmp_path: Path) -> None:
     """A bootstrap copy failure rolls back files moved earlier in installation."""
-    config = make_config(tmp_path)
+    config = make_config(tmp_path=tmp_path)
     game_dir = Path(config.game_executable).parent
     original = game_dir / "winhttp.dll"
     original.write_bytes(b"original")
     real_copy = shutil.copy2
 
-    def fail_doorstop(source: str | Path, destination: str | Path) -> str:
+    def fail_doorstop(source: str | Path, destination: str | Path) -> str:  # noqa: PLR0917 -- keyword-only-exception: shutil callback ABI.
         """Fail only the second managed bootstrap copy."""
         if Path(source).name == "doorstop_config.ini":
             raise OSError
@@ -329,8 +338,8 @@ def test_smoke_restores_bootstrap_after_partial_install_failure(tmp_path: Path) 
 
     with patch("mod_debug_pilot.infrastructure.runner.shutil.copy2", side_effect=fail_doorstop):
         result = asyncio.run(
-            make_executor(FakeLauncher(FakeProcess())).execute(
-                make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="partial"),
+            make_executor(launcher=FakeLauncher(process=FakeProcess())).execute(
+                request=make_request(config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="partial"),
             ),
         )
 
@@ -339,17 +348,17 @@ def test_smoke_restores_bootstrap_after_partial_install_failure(tmp_path: Path) 
     assert not (game_dir / "doorstop_config.ini").exists()
 
 
-def test_smoke_restores_bootstrap_when_process_cleanup_fails(tmp_path: Path) -> None:
+def test_smoke_restores_bootstrap_when_process_cleanup_fails(*, tmp_path: Path) -> None:
     """Doorstop restoration runs even when process-tree termination fails."""
-    config = make_config(tmp_path, marker_in_log=True)
+    config = make_config(tmp_path=tmp_path, marker_in_log=True)
     game_dir = Path(config.game_executable).parent
     original = game_dir / "winhttp.dll"
     original.write_bytes(b"original")
     process = FakeProcess(terminate_error=OSError())
 
     result = asyncio.run(
-        make_executor(FakeLauncher(process)).execute(
-            make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="cleanup"),
+        make_executor(launcher=FakeLauncher(process=process)).execute(
+            request=make_request(config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="cleanup"),
         ),
     )
 
@@ -359,15 +368,17 @@ def test_smoke_restores_bootstrap_when_process_cleanup_fails(tmp_path: Path) -> 
     assert not (game_dir / "doorstop_config.ini").exists()
 
 
-def test_executor_rejects_unsafe_artifact_identity_and_roots(tmp_path: Path) -> None:
+def test_executor_rejects_unsafe_artifact_identity_and_roots(*, tmp_path: Path) -> None:
     """Artifact paths cannot traverse or write inside protected input trees."""
-    config = make_config(tmp_path)
-    executor = make_executor(FakeLauncher(FakeProcess()))
+    config = make_config(tmp_path=tmp_path)
+    executor = make_executor(launcher=FakeLauncher(process=FakeProcess()))
 
     with pytest.raises(UnsafeJobIdentifierError):
         asyncio.run(
             executor.execute(
-                make_request(config, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="../escape"),
+                request=make_request(
+                    config=config, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="../escape"
+                ),
             ),
         )
 
@@ -376,23 +387,27 @@ def test_executor_rejects_unsafe_artifact_identity_and_roots(tmp_path: Path) -> 
         Path(config.base_profile_dir) / "nested-artifacts",
     ):
         unsafe = PilotConfig.from_mapping(
-            {**config.to_mapping(), "artifact_root": str(artifact_root)},
+            values={**config.to_mapping(), "artifact_root": str(artifact_root)},
         )
         with pytest.raises(UnsafeArtifactPathError):
             asyncio.run(
                 executor.execute(
-                    make_request(unsafe, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="unsafe"),
+                    request=make_request(
+                        config=unsafe, kind=JobKind.VALIDATE_ENVIRONMENT, job_id="unsafe"
+                    ),
                 ),
             )
 
 
-def test_unreadable_log_is_treated_as_not_ready(tmp_path: Path) -> None:
+def test_unreadable_log_is_treated_as_not_ready(*, tmp_path: Path) -> None:
     """A transient log read error remains bounded by the job timeout."""
-    config = make_config(tmp_path, marker_in_log=True)
+    config = make_config(tmp_path=tmp_path, marker_in_log=True)
     with patch.object(Path, "read_text", side_effect=OSError):
         result = asyncio.run(
-            make_executor(FakeLauncher(FakeProcess())).execute(
-                make_request(config, kind=JobKind.RUN_SMOKE_TEST, job_id="unreadable"),
+            make_executor(launcher=FakeLauncher(process=FakeProcess())).execute(
+                request=make_request(
+                    config=config, kind=JobKind.RUN_SMOKE_TEST, job_id="unreadable"
+                ),
             ),
         )
 
@@ -406,25 +421,25 @@ def test_system_clock_and_default_executor() -> None:
         clock = SystemClock()
         assert clock.now().tzinfo is UTC
         first = clock.monotonic()
-        await clock.sleep(0)
+        await clock.sleep(seconds=0)
         assert clock.monotonic() >= first
 
     asyncio.run(scenario())
     assert isinstance(LocalJobExecutor.system_default(), LocalJobExecutor)
 
 
-def test_pillow_capturer_creates_directory_and_png(tmp_path: Path) -> None:
+def test_pillow_capturer_creates_directory_and_png(*, tmp_path: Path) -> None:
     """Pillow capture is moved off-loop and explicitly saved as PNG."""
     image = Mock()
     destination = tmp_path / "nested" / "screen.png"
     with patch("mod_debug_pilot.infrastructure.runner.ImageGrab.grab", return_value=image) as grab:
-        asyncio.run(PillowScreenCapturer().capture(destination))
+        asyncio.run(PillowScreenCapturer().capture(destination=destination))
 
     grab.assert_called_once_with(all_screens=False)
     image.save.assert_called_once_with(destination, format="PNG")
 
 
-def test_asyncio_launcher_forwards_explicit_process_contract(tmp_path: Path) -> None:
+def test_asyncio_launcher_forwards_explicit_process_contract(*, tmp_path: Path) -> None:
     """The production launcher never introduces a shell string."""
     process = Mock(pid=7, returncode=0)
     create = AsyncMock(return_value=process)
@@ -432,7 +447,7 @@ def test_asyncio_launcher_forwards_explicit_process_contract(tmp_path: Path) -> 
     with patch("mod_debug_pilot.infrastructure.runner.asyncio.create_subprocess_exec", create):
         result = asyncio.run(
             AsyncioProcessLauncher().launch(
-                executable,
+                executable=executable,
                 arguments=("--safe", "value"),
                 working_directory=tmp_path,
                 environment={"PUBLIC": "1"},
@@ -451,7 +466,9 @@ def test_asyncio_process_termination_paths() -> None:
 
     async def scenario() -> None:
         exited = Mock(pid=1, returncode=0)
-        await AsyncioRunningProcess(cast(asyncio.subprocess.Process, exited)).terminate_tree()
+        await AsyncioRunningProcess(
+            process=cast(asyncio.subprocess.Process, exited)
+        ).terminate_tree()
         exited.terminate.assert_not_called()
 
         active_windows = Mock(pid=2, returncode=None)
@@ -463,7 +480,7 @@ def test_asyncio_process_termination_paths() -> None:
             patch("mod_debug_pilot.infrastructure.runner.asyncio.create_subprocess_exec", create),
         ):
             await AsyncioRunningProcess(
-                cast(asyncio.subprocess.Process, active_windows),
+                process=cast(asyncio.subprocess.Process, active_windows),
             ).terminate_tree()
         assert create.await_args is not None
         assert create.await_args.args[:4] == ("taskkill", "/PID", "2", "/T")
@@ -472,14 +489,14 @@ def test_asyncio_process_termination_paths() -> None:
         graceful.wait = AsyncMock(return_value=0)
         with patch.object(os, "name", "posix"):
             await AsyncioRunningProcess(
-                cast(asyncio.subprocess.Process, graceful),
+                process=cast(asyncio.subprocess.Process, graceful),
             ).terminate_tree()
         graceful.terminate.assert_called_once_with()
 
         forced = Mock(pid=4, returncode=None)
         forced.wait = AsyncMock(return_value=0)
 
-        async def timeout_wait(
+        async def timeout_wait(  # noqa: PLR0917 -- keyword-only-exception: asyncio wait_for callback ABI.
             awaitable: Awaitable[int],
             **options: float,
         ) -> int:
@@ -497,7 +514,7 @@ def test_asyncio_process_termination_paths() -> None:
             ),
         ):
             await AsyncioRunningProcess(
-                cast(asyncio.subprocess.Process, forced),
+                process=cast(asyncio.subprocess.Process, forced),
             ).terminate_tree()
         forced.kill.assert_called_once_with()
 

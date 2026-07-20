@@ -32,7 +32,9 @@ class FakePage:
         self.controls: list[ft.Control] = []
         self.update_count = 0
 
-    def add(self, *controls: ft.Control) -> None:
+    def add(  # keyword-only-exception: Flet task callbacks preserve the external signature.
+        self, *controls: ft.Control
+    ) -> None:
         """Record controls added to the page."""
         self.controls.extend(controls)
 
@@ -41,7 +43,7 @@ class FakePage:
         self.update_count += 1
 
 
-def result(outcome: JobOutcome = JobOutcome.SUCCEEDED) -> JobResult:
+def result(*, outcome: JobOutcome = JobOutcome.SUCCEEDED) -> JobResult:
     """Return one deterministic latest result."""
     return JobResult(
         job_id="job",
@@ -66,8 +68,8 @@ def test_phase_appearance_covers_every_semantic_variant() -> None:
         AppPhase.READY: "Ready",
     }
 
-    assert {phase: phase_appearance(phase).label for phase in AppPhase} == expected
-    assert all(phase_appearance(phase).icon is not None for phase in AppPhase)
+    assert {phase: phase_appearance(phase=phase).label for phase in AppPhase} == expected
+    assert all(phase_appearance(phase=phase).icon is not None for phase in AppPhase)
 
 
 def test_configure_page_applies_product_theme() -> None:
@@ -87,10 +89,10 @@ def test_view_mount_render_and_unmount_are_lifecycle_owned() -> None:
     """Mount loads state, render updates semantic controls, and unmount detaches."""
 
     async def scenario() -> None:
-        config = PilotConfig.from_mapping(valid_values())
-        controller = make_controller(repository=ConfigRepositoryStub(config))
+        config = PilotConfig.from_mapping(values=valid_values())
+        controller = make_controller(repository=ConfigRepositoryStub(value=config))
         page = FakePage()
-        view = PilotView(cast(ft.Page, page), controller=controller)
+        view = PilotView(page=cast(ft.Page, page), controller=controller)
         page.add(view.build())
 
         await view.mount()
@@ -108,9 +110,9 @@ def test_view_mount_render_and_unmount_are_lifecycle_owned() -> None:
             phase=AppPhase.FAILED,
             message="Fix settings.",
             field_errors={"game_executable": "Required."},
-            latest_result=result(JobOutcome.FAILED),
+            latest_result=result(outcome=JobOutcome.FAILED),
         )
-        view.render(failed)
+        view.render(state=failed)
         assert view.form_fields["game_executable"].error == "Required."
         assert view.result_path.value == r"C:\Artifacts\job"
         assert view.status_label.value == "Needs attention"
@@ -126,8 +128,8 @@ def test_view_actions_emit_save_validate_and_run_intents() -> None:
     """Controls convert values once and invoke named controller operations."""
 
     async def scenario() -> None:
-        controller = make_controller(executor=ExecutorStub(JobOutcome.SUCCEEDED))
-        view = PilotView(cast(ft.Page, FakePage()), controller=controller)
+        controller = make_controller(executor=ExecutorStub(outcome=JobOutcome.SUCCEEDED))
+        view = PilotView(page=cast(ft.Page, FakePage()), controller=controller)
         await view.mount()
         for name, value in valid_values().items():
             view.form_fields[name].value = str(value)
@@ -163,7 +165,7 @@ def test_view_cancel_and_page_close_handlers_cleanup() -> None:
         gate = asyncio.Event()
         controller = make_controller(executor=ExecutorStub(gate=gate))
         page = FakePage()
-        view = PilotView(cast(ft.Page, page), controller=controller)
+        view = PilotView(page=cast(ft.Page, page), controller=controller)
         await view.mount()
 
         run = cast(Callable[[ft.Event[ft.Button]], None], view.run_button.on_click)
@@ -197,15 +199,15 @@ def test_view_cancel_and_page_close_handlers_cleanup() -> None:
 def test_render_disables_form_for_every_busy_phase() -> None:
     """Loading, saving, and running serialize actions with distinct cancellation."""
     page = FakePage()
-    view = PilotView(cast(ft.Page, page), controller=make_controller())
+    view = PilotView(page=cast(ft.Page, page), controller=make_controller())
     base = AppState.initial()
 
     for phase in (AppPhase.LOADING, AppPhase.SAVING, AppPhase.RUNNING):
-        view.render(replace(base, phase=phase))
+        view.render(state=replace(base, phase=phase))
         assert view.save_button.disabled is True
         assert all(field.disabled for field in view.form_fields.values())
         assert view.cancel_button.disabled is (phase is not AppPhase.RUNNING)
 
-    view.render(replace(base, phase=AppPhase.READY))
+    view.render(state=replace(base, phase=AppPhase.READY))
     assert view.save_button.disabled is False
     assert view.result_path.value == "No completed run yet."

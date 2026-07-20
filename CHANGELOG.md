@@ -35,6 +35,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added strict Ruff, mypy, and 100% statement-and-branch coverage gates.
 - Added a least-privilege, SHA-pinned Windows GitHub Actions quality workflow.
 
+### Changed
+
+- Changed project-owned Python APIs, value types, test doubles, and call sites to
+  require keyword arguments; documented only the positional callback contracts
+  imposed by Flet, aiohttp, ASGI, asyncio, and the Python runtime.
+- Enabled Ruff preview enforcement for zero project-owned positional arguments,
+  backed by the Flet project mechanical baseline check.
+
 ### Security
 
 - Restricted Thunderstore redirects to its HTTPS domain, bounded archive and

@@ -26,7 +26,7 @@ class PhaseAppearance:
     label: str
 
 
-def phase_appearance(phase: AppPhase) -> PhaseAppearance:
+def phase_appearance(*, phase: AppPhase) -> PhaseAppearance:
     """Map every phase to an icon, color, and non-color label."""
     if phase in {AppPhase.LOADING, AppPhase.SAVING, AppPhase.RUNNING}:
         return PhaseAppearance(icon=ft.Icons.PENDING, color=_ACCENT, label="In progress")
@@ -41,7 +41,7 @@ def phase_appearance(phase: AppPhase) -> PhaseAppearance:
     return PhaseAppearance(icon=ft.Icons.CHECK, color=_NEUTRAL, label="Ready")
 
 
-def configure_page(page: ft.Page) -> None:
+def configure_page(page: ft.Page) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
     """Apply product identity and a desktop-accessible theme."""
     page.title = "ModDebugPilot"
     page.theme_mode = ft.ThemeMode.SYSTEM
@@ -53,7 +53,7 @@ def configure_page(page: ft.Page) -> None:
 class PilotView:
     """Render one controller state through stable semantic control references."""
 
-    def __init__(self, page: ft.Page, *, controller: AppController) -> None:
+    def __init__(self, page: ft.Page, *, controller: AppController) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         """Create controls without starting I/O or background work."""
         self._page = page
         self._controller = controller
@@ -103,26 +103,30 @@ class PilotView:
 
     async def mount(self) -> None:
         """Subscribe rendering, load settings, and bind page shutdown."""
-        self._unsubscribe = self._controller.subscribe(self.render)
+        self._unsubscribe = self._controller.subscribe(listener=self.render)
         self._page.on_close = self._on_page_close
         self._page.on_disconnect = self._on_page_close
         await self._controller.initialize()
 
-    async def unmount(self) -> None:
+    async def unmount(
+        self,
+    ) -> (
+        None
+    ):  # keyword-only-exception: AppController listener callbacks receive state positionally.
         """Close owned work and detach rendering exactly once."""
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
         await self._controller.close()
 
-    def render(self, state: AppState) -> None:
+    def render(self, state: AppState) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         """Apply one coherent state snapshot and issue one page update."""
         if state.config != self._rendered_config:
-            self._set_form_config(state.config)
+            self._set_form_config(config=state.config)
             self._rendered_config = state.config
         for name, field in self._fields.items():
             field.error = state.field_errors.get(name)
-        appearance = phase_appearance(state.phase)
+        appearance = phase_appearance(phase=state.phase)
         self.status_icon.icon = appearance.icon
         self.status_icon.color = appearance.color
         self.status_label.value = appearance.label
@@ -145,16 +149,18 @@ class PilotView:
     def _create_fields(self) -> dict[str, ft.TextField]:
         return {
             "game_executable": self._path_field(
-                "Game executable",
+                label="Game executable",
                 hint=r"C:\Program Files (x86)\Steam\steamapps\common\...\Game.exe",
             ),
             "base_profile_dir": self._path_field(
-                "BepInEx base profile",
+                label="BepInEx base profile",
                 hint=r"C:\ModDebugPilot\base-profile",
             ),
-            "mod_dll": self._path_field("Debug mod DLL", hint=r"C:\Project\bin\Debug\Mod.dll"),
+            "mod_dll": self._path_field(
+                label="Debug mod DLL", hint=r"C:\Project\bin\Debug\Mod.dll"
+            ),
             "artifact_root": self._path_field(
-                "Artifact root",
+                label="Artifact root",
                 hint=r"C:\ModDebugPilot\artifacts",
             ),
             "profile_name": ft.TextField(label="Profile name", max_length=64),
@@ -185,7 +191,7 @@ class PilotView:
         }
 
     @staticmethod
-    def _path_field(label: str, *, hint: str) -> ft.TextField:
+    def _path_field(*, label: str, hint: str) -> ft.TextField:
         return ft.TextField(label=label, hint_text=hint, max_length=4096)
 
     def _build_root(self) -> ft.Control:
@@ -333,34 +339,37 @@ class PilotView:
             ),
         )
 
-    def _set_form_config(self, config: PilotConfig) -> None:
+    def _set_form_config(self, *, config: PilotConfig) -> None:
         for name, value in config.to_mapping().items():
             self._fields[name].value = str(value)
 
-    def _form_values(self) -> dict[str, object]:
+    def _form_values(
+        self,
+    ) -> dict[
+        str, object
+    ]:  # keyword-only-exception: Flet passes the control event positionally to handlers.
         return {name: field.value for name, field in self._fields.items()}
 
-    # keyword-only-exception: Flet passes the control event positionally to handlers.
-    async def _on_save(self, event: ft.Event[ft.Button]) -> None:
+    async def _on_save(self, event: ft.Event[ft.Button]) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         del event
-        await self._controller.save_settings(self._form_values())
+        await self._controller.save_settings(values=self._form_values())
 
     # keyword-only-exception: Flet passes the control event positionally to handlers.
-    def _on_validate(self, event: ft.Event[ft.OutlinedButton]) -> None:
+    def _on_validate(self, event: ft.Event[ft.OutlinedButton]) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         del event
-        self._controller.start_job(JobKind.VALIDATE_ENVIRONMENT)
+        self._controller.start_job(kind=JobKind.VALIDATE_ENVIRONMENT)
 
     # keyword-only-exception: Flet passes the control event positionally to handlers.
-    def _on_run(self, event: ft.Event[ft.Button]) -> None:
+    def _on_run(self, event: ft.Event[ft.Button]) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         del event
-        self._controller.start_job(JobKind.RUN_SMOKE_TEST)
+        self._controller.start_job(kind=JobKind.RUN_SMOKE_TEST)
 
     # keyword-only-exception: Flet passes the control event positionally to handlers.
-    async def _on_cancel(self, event: ft.Event[ft.OutlinedButton]) -> None:
+    async def _on_cancel(self, event: ft.Event[ft.OutlinedButton]) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         del event
         await self._controller.cancel_active()
 
     # keyword-only-exception: Flet passes the page event positionally to handlers.
-    async def _on_page_close(self, event: ft.Event[ft.Page]) -> None:
+    async def _on_page_close(self, event: ft.Event[ft.Page]) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet and controller listeners invoke callbacks positionally.
         del event
         await self.unmount()

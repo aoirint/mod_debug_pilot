@@ -33,7 +33,7 @@ def valid_values() -> dict[str, object]:
 
 def test_config_round_trip_and_defaults() -> None:
     """Configuration normalizes form strings and has incomplete first-run defaults."""
-    config = PilotConfig.from_mapping(valid_values())
+    config = PilotConfig.from_mapping(values=valid_values())
 
     assert config.to_mapping() == {
         "game_executable": r"C:\Games\Lethal Company.exe",
@@ -48,7 +48,7 @@ def test_config_round_trip_and_defaults() -> None:
         "screenshot_delay_seconds": 1.5,
         "debugger_port": 55556,
     }
-    assert PilotConfig.from_mapping(config.to_mapping()) == config
+    assert PilotConfig.from_mapping(values=config.to_mapping()) == config
     assert PilotConfig.defaults().game_executable == ""
 
 
@@ -79,6 +79,7 @@ def test_config_round_trip_and_defaults() -> None:
     ],
 )
 def test_config_rejects_invalid_fields(
+    *,
     change: dict[str, object],
     field: str,
     message: str,
@@ -88,7 +89,7 @@ def test_config_rejects_invalid_fields(
     values.update(change)
 
     with pytest.raises(ValidationError) as raised:
-        PilotConfig.from_mapping(values)
+        PilotConfig.from_mapping(values=values)
 
     assert str(raised.value) == "Configuration is invalid."
     assert message in raised.value.errors[field]
@@ -96,7 +97,7 @@ def test_config_rejects_invalid_fields(
 
 def test_request_and_result_artifact_mappings() -> None:
     """Requests and results serialize stable schema-versioned records."""
-    config = PilotConfig.from_mapping(valid_values())
+    config = PilotConfig.from_mapping(values=valid_values())
     request = JobRequest(
         job_id="job-1",
         kind=JobKind.RUN_SMOKE_TEST,

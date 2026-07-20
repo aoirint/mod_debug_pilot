@@ -27,7 +27,7 @@ _HEADER_PAIR_SIZE = 2
 class AsgiApplication(Protocol):
     """Minimal ASGI callable contract used by the local guard."""
 
-    async def __call__(
+    async def __call__(  # noqa: PLR0917 -- keyword-only-exception: ASGI invokes application callables positionally.
         self,
         scope: AsgiScope,
         receive: AsgiReceive,
@@ -43,22 +43,22 @@ class WebHostError(OSError):
 class TrustedLanGuard:
     """Reject DNS-rebinding and cross-origin HTTP/WebSocket connections."""
 
-    def __init__(self, app: AsgiApplication, *, allowed_hosts: Iterable[str]) -> None:
+    def __init__(self, *, app: AsgiApplication, allowed_hosts: Iterable[str]) -> None:
         """Wrap an ASGI application with an exact normalized host allow-list."""
-        normalized = {_normalize_host(item) for item in allowed_hosts}
+        normalized = {_normalize_host(authority=item) for item in allowed_hosts}
         self._allowed_hosts = frozenset(item for item in normalized if item is not None)
         if not self._allowed_hosts:
             raise WebHostError("Controller Web UI requires at least one allowed LAN host.")
         self._app = app
 
-    async def __call__(
+    async def __call__(  # noqa: PLR0917 -- keyword-only-exception: ASGI invokes application callables positionally.
         self,
         scope: AsgiScope,
         receive: AsgiReceive,
         send: AsgiSend,
     ) -> None:
         """Forward only same-origin requests for an explicitly allowed host."""
-        if _scope_allowed(scope, allowed_hosts=self._allowed_hosts):
+        if _scope_allowed(scope=scope, allowed_hosts=self._allowed_hosts):
             await self._app(scope, receive, send)
             return
         if scope.get("type") == "websocket":
@@ -85,7 +85,7 @@ class FletWebHost:
     ) -> None:
         """Create a stopped trusted-LAN host around Agent-owned services."""
 
-        async def page_main(page: ft.Page) -> None:
+        async def page_main(page: ft.Page) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet invokes page entrypoints positionally.
             await configure_web_controller(page, context=context)
 
         app = cast(
@@ -98,7 +98,7 @@ class FletWebHost:
                 no_cdn=True,
             ),
         )
-        self._app = TrustedLanGuard(app, allowed_hosts=allowed_hosts)
+        self._app = TrustedLanGuard(app=app, allowed_hosts=allowed_hosts)
         self._server: uvicorn.Server | None = None
         self._task: asyncio.Task[None] | None = None
 
@@ -138,10 +138,10 @@ class FletWebHost:
         self._task = None
 
 
-def discover_controller_hosts(bind_host: str) -> tuple[str, ...]:
+def discover_controller_hosts(*, bind_host: str) -> tuple[str, ...]:
     """Return exact host names and addresses accepted by the HTTP listener."""
     hosts = {"localhost", "127.0.0.1", "::1"}
-    normalized_bind = _normalize_host(bind_host)
+    normalized_bind = _normalize_host(authority=bind_host)
     if normalized_bind is not None and normalized_bind not in _WILDCARD_HOSTS:
         hosts.add(normalized_bind)
     names = {socket.gethostname(), socket.getfqdn()}
@@ -160,7 +160,7 @@ def discover_controller_hosts(bind_host: str) -> tuple[str, ...]:
     return tuple(sorted(hosts, key=_host_sort_key))
 
 
-def preferred_controller_host(hosts: Iterable[str]) -> str:
+def preferred_controller_host(*, hosts: Iterable[str]) -> str:
     """Prefer a non-loopback IPv4 address for the copyable browser URL."""
     values = tuple(hosts)
     for value in values:
@@ -180,24 +180,24 @@ def preferred_controller_host(hosts: Iterable[str]) -> str:
     return "127.0.0.1"
 
 
-def controller_http_url(host: str, *, port: int) -> str:
+def controller_http_url(*, host: str, port: int) -> str:
     """Format one IPv4, IPv6, or DNS controller URL."""
-    normalized = _normalize_host(host)
+    normalized = _normalize_host(authority=host)
     if normalized is None:
         raise WebHostError("Controller URL host is invalid.")
     rendered = f"[{normalized}]" if ":" in normalized else normalized
     return f"http://{rendered}:{port}/controller"
 
 
-def _scope_allowed(scope: AsgiScope, *, allowed_hosts: frozenset[str]) -> bool:
+def _scope_allowed(*, scope: AsgiScope, allowed_hosts: frozenset[str]) -> bool:
     scope_type = scope.get("type")
     if scope_type not in {"http", "websocket", "lifespan"}:
         return False
     if scope_type == "lifespan":
         return True
-    headers = _headers(scope)
+    headers = _headers(scope=scope)
     authority = headers.get("host")
-    request_authority = _normalize_authority(authority or "")
+    request_authority = _normalize_authority(authority=authority or "")
     request_host = None if request_authority is None else request_authority[0]
     if request_host not in allowed_hosts:
         return False
@@ -205,10 +205,13 @@ def _scope_allowed(scope: AsgiScope, *, allowed_hosts: frozenset[str]) -> bool:
     if origin is None:
         return scope_type == "http"
     parsed = urlsplit(origin)
-    return parsed.scheme == "http" and _normalize_authority(parsed.netloc) == request_authority
+    return (
+        parsed.scheme == "http"
+        and _normalize_authority(authority=parsed.netloc) == request_authority
+    )
 
 
-def _headers(scope: AsgiScope) -> dict[str, str]:
+def _headers(*, scope: AsgiScope) -> dict[str, str]:
     raw_headers = scope.get("headers")
     if not isinstance(raw_headers, list):
         return {}
@@ -222,12 +225,12 @@ def _headers(scope: AsgiScope) -> dict[str, str]:
     return result
 
 
-def _normalize_host(authority: str) -> str | None:
-    parsed = _normalize_authority(authority)
+def _normalize_host(*, authority: str) -> str | None:
+    parsed = _normalize_authority(authority=authority)
     return None if parsed is None else parsed[0]
 
 
-def _normalize_authority(authority: str) -> tuple[str, int | None] | None:
+def _normalize_authority(*, authority: str) -> tuple[str, int | None] | None:
     value = authority.strip()
     if (
         not value
@@ -238,7 +241,7 @@ def _normalize_authority(authority: str) -> tuple[str, int | None] | None:
     ):
         return None
     if value.count(":") > 1 and not value.startswith("["):
-        return _normalize_raw_ip(value)
+        return _normalize_raw_ip(value=value)
     try:
         parsed = urlsplit(f"//{value}")
         host = parsed.hostname
@@ -257,14 +260,19 @@ def _normalize_authority(authority: str) -> tuple[str, int | None] | None:
     return host.rstrip(".").casefold(), port
 
 
-def _normalize_raw_ip(value: str) -> tuple[str, None] | None:
+def _normalize_raw_ip(
+    *, value: str
+) -> (
+    tuple[str, None] | None
+):  # keyword-only-exception: sorted key callbacks receive their value positionally.
     try:
         return ipaddress.ip_address(value).compressed.casefold(), None
     except ValueError:
         return None
 
 
-def _host_sort_key(value: str) -> tuple[int, str]:
+# keyword-only-exception: sorted key callbacks receive their value positionally.
+def _host_sort_key(value: str) -> tuple[int, str]:  # noqa: PLR0917 -- keyword-only-exception: sorted invokes key callbacks positionally.
     try:
         address = ipaddress.ip_address(value)
     except ValueError:

@@ -12,7 +12,7 @@ _PROFILE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 class ValidationError(ValueError):
     """Report one or more invalid user-controlled configuration values."""
 
-    def __init__(self, errors: dict[str, str]) -> None:
+    def __init__(self, *, errors: dict[str, str]) -> None:
         """Create an error with stable field-specific messages."""
         super().__init__("Configuration is invalid.")
         self.errors = errors
@@ -61,15 +61,15 @@ class PilotConfig:
         )
 
     @classmethod
-    def from_mapping(cls, values: dict[str, object]) -> PilotConfig:
+    def from_mapping(cls, *, values: dict[str, object]) -> PilotConfig:
         """Validate serialized or form values and create a configuration."""
         errors: dict[str, str] = {}
         paths = {
-            name: _required_text(values, name=name, errors=errors, max_length=4096)
+            name: _required_text(values=values, name=name, errors=errors, max_length=4096)
             for name in ("game_executable", "base_profile_dir", "mod_dll", "artifact_root")
         }
         profile_name = _required_text(
-            values,
+            values=values,
             name="profile_name",
             errors=errors,
             max_length=64,
@@ -78,48 +78,48 @@ class PilotConfig:
             errors["profile_name"] = "Use letters, numbers, underscore, or hyphen."
 
         ready_marker = _required_text(
-            values,
+            values=values,
             name="ready_marker",
             errors=errors,
             max_length=200,
         )
         timeout_seconds = _bounded_int(
-            values,
+            values=values,
             name="timeout_seconds",
             minimum=5,
             maximum=3600,
             errors=errors,
         )
         screen_width = _bounded_int(
-            values,
+            values=values,
             name="screen_width",
             minimum=640,
             maximum=7680,
             errors=errors,
         )
         screen_height = _bounded_int(
-            values,
+            values=values,
             name="screen_height",
             minimum=480,
             maximum=4320,
             errors=errors,
         )
         screenshot_delay_seconds = _bounded_float(
-            values,
+            values=values,
             name="screenshot_delay_seconds",
             minimum=0.0,
             maximum=300.0,
             errors=errors,
         )
         debugger_port = _bounded_int(
-            values,
+            values=values,
             name="debugger_port",
             minimum=1024,
             maximum=65535,
             errors=errors,
         )
         if errors:
-            raise ValidationError(errors)
+            raise ValidationError(errors=errors)
         return cls(
             **paths,
             profile_name=profile_name,
@@ -198,8 +198,8 @@ class JobResult:
 
 
 def _required_text(
-    values: dict[str, object],
     *,
+    values: dict[str, object],
     name: str,
     errors: dict[str, str],
     max_length: int,
@@ -216,8 +216,8 @@ def _required_text(
 
 
 def _bounded_int(
-    values: dict[str, object],
     *,
+    values: dict[str, object],
     name: str,
     minimum: int,
     maximum: int,
@@ -235,8 +235,8 @@ def _bounded_int(
 
 
 def _bounded_float(
-    values: dict[str, object],
     *,
+    values: dict[str, object],
     name: str,
     minimum: float,
     maximum: float,

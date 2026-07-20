@@ -70,8 +70,8 @@ class ProcessLauncher(Protocol):
 
     async def launch(
         self,
-        executable: Path,
         *,
+        executable: Path,
         arguments: tuple[str, ...],
         working_directory: Path,
         environment: Mapping[str, str],
@@ -83,7 +83,7 @@ class ProcessLauncher(Protocol):
 class ScreenCapturer(Protocol):
     """Capture a diagnostic image."""
 
-    async def capture(self, destination: Path) -> None:
+    async def capture(self, *, destination: Path) -> None:
         """Capture the primary display into a PNG file."""
         ...
 
@@ -99,7 +99,7 @@ class RuntimeClock(Protocol):
         """Return monotonic seconds."""
         ...
 
-    async def sleep(self, seconds: float) -> None:
+    async def sleep(self, *, seconds: float) -> None:
         """Sleep without blocking the event loop."""
         ...
 
@@ -115,12 +115,12 @@ class SystemClock:
         """Return monotonic seconds."""
         return monotonic()
 
-    async def sleep(self, seconds: float) -> None:
+    async def sleep(self, *, seconds: float) -> None:
         """Sleep asynchronously."""
         await asyncio.sleep(seconds)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class AsyncioRunningProcess:
     """Adapt an asyncio subprocess to the trusted process contract."""
 
@@ -165,8 +165,8 @@ class AsyncioProcessLauncher:
 
     async def launch(
         self,
-        executable: Path,
         *,
+        executable: Path,
         arguments: tuple[str, ...],
         working_directory: Path,
         environment: Mapping[str, str],
@@ -180,19 +180,19 @@ class AsyncioProcessLauncher:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        return AsyncioRunningProcess(process)
+        return AsyncioRunningProcess(process=process)
 
 
 class PillowScreenCapturer:
     """Capture the primary display through Pillow."""
 
-    async def capture(self, destination: Path) -> None:
+    async def capture(self, *, destination: Path) -> None:
         """Capture and save outside the UI event loop."""
         destination.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(self._capture_sync, destination)
+        await asyncio.to_thread(self._capture_sync, destination=destination)
 
     @staticmethod
-    def _capture_sync(destination: Path) -> None:
+    def _capture_sync(*, destination: Path) -> None:
         image = ImageGrab.grab(all_screens=False)
         image.save(destination, format="PNG")
 
@@ -227,26 +227,26 @@ class LocalJobExecutor:
             environment=os.environ,
         )
 
-    async def execute(self, request: JobRequest) -> JobResult:
+    async def execute(self, *, request: JobRequest) -> JobResult:
         """Execute validation or one smoke test and always write a result."""
         started = self._clock.now()
-        artifact_dir = self._artifact_dir(request)
+        artifact_dir = self._artifact_dir(request=request)
         artifact_dir.mkdir(parents=True, exist_ok=False)
         await asyncio.to_thread(
             write_json_atomic,
-            artifact_dir / "request.json",
+            path=artifact_dir / "request.json",
             payload=request.to_mapping(),
         )
         await asyncio.to_thread(
             write_json_atomic,
-            artifact_dir / "environment.json",
-            payload=self._environment_payload(request.config),
+            path=artifact_dir / "environment.json",
+            payload=self._environment_payload(config=request.config),
         )
         try:
-            issues = self._validation_issues(request.config)
+            issues = self._validation_issues(config=request.config)
             if issues:
                 result = self._result(
-                    request,
+                    request=request,
                     outcome=JobOutcome.FAILED,
                     message="Environment validation failed: " + " ".join(issues),
                     artifact_dir=artifact_dir,
@@ -254,17 +254,21 @@ class LocalJobExecutor:
                 )
             elif request.kind is JobKind.VALIDATE_ENVIRONMENT:
                 result = self._result(
-                    request,
+                    request=request,
                     outcome=JobOutcome.SUCCEEDED,
                     message="Environment validation passed.",
                     artifact_dir=artifact_dir,
                     started=started,
                 )
             else:
-                result = await self._run_smoke(request, artifact_dir=artifact_dir, started=started)
+                result = await self._run_smoke(
+                    request=request,
+                    artifact_dir=artifact_dir,
+                    started=started,
+                )
         except asyncio.CancelledError:
             canceled = self._result(
-                request,
+                request=request,
                 outcome=JobOutcome.CANCELED,
                 message="Job canceled; partial artifacts were preserved.",
                 artifact_dir=artifact_dir,
@@ -272,13 +276,13 @@ class LocalJobExecutor:
             )
             await asyncio.to_thread(
                 write_json_atomic,
-                artifact_dir / "result.json",
+                path=artifact_dir / "result.json",
                 payload=canceled.to_mapping(),
             )
             raise
         except OSError:
             result = self._result(
-                request,
+                request=request,
                 outcome=JobOutcome.FAILED,
                 message="A local file or process operation failed.",
                 artifact_dir=artifact_dir,
@@ -286,12 +290,12 @@ class LocalJobExecutor:
             )
         await asyncio.to_thread(
             write_json_atomic,
-            artifact_dir / "result.json",
+            path=artifact_dir / "result.json",
             payload=result.to_mapping(),
         )
         return result
 
-    def _validation_issues(self, config: PilotConfig) -> list[str]:
+    def _validation_issues(self, *, config: PilotConfig) -> list[str]:
         checks = (
             (self._platform_name == "win32", "Windows is required."),
             (Path(config.game_executable).is_file(), "Game executable was not found."),
@@ -316,8 +320,8 @@ class LocalJobExecutor:
 
     async def _run_smoke(
         self,
-        request: JobRequest,
         *,
+        request: JobRequest,
         artifact_dir: Path,
         started: datetime,
     ) -> JobResult:
@@ -361,13 +365,13 @@ class LocalJobExecutor:
                 f"address=127.0.0.1:{config.debugger_port},embedding=1,defer=y"
             )
             process = await self._launcher.launch(
-                Path(config.game_executable),
+                executable=Path(config.game_executable),
                 arguments=arguments,
                 working_directory=game_dir,
                 environment=environment,
             )
             outcome, message = await self._wait_for_ready(
-                process,
+                process=process,
                 config=config,
                 profile_dir=profile_dir,
                 artifact_dir=artifact_dir,
@@ -382,7 +386,7 @@ class LocalJobExecutor:
                 if log_path.is_file():
                     await asyncio.to_thread(shutil.copy2, log_path, artifact_dir / "game.log")
         return self._result(
-            request,
+            request=request,
             outcome=outcome,
             message=message,
             artifact_dir=artifact_dir,
@@ -391,8 +395,8 @@ class LocalJobExecutor:
 
     async def _wait_for_ready(
         self,
-        process: RunningProcess,
         *,
+        process: RunningProcess,
         config: PilotConfig,
         profile_dir: Path,
         artifact_dir: Path,
@@ -404,19 +408,19 @@ class LocalJobExecutor:
                 return JobOutcome.FAILED, "Game exited before the ready marker appeared."
             if await asyncio.to_thread(
                 _file_contains,
-                log_path,
+                path=log_path,
                 marker=config.ready_marker,
             ):
-                await self._clock.sleep(config.screenshot_delay_seconds)
-                await self._capturer.capture(artifact_dir / "screenshots" / "ready.png")
+                await self._clock.sleep(seconds=config.screenshot_delay_seconds)
+                await self._capturer.capture(destination=artifact_dir / "screenshots" / "ready.png")
                 return JobOutcome.SUCCEEDED, "Smoke test reached the ready marker."
-            await self._clock.sleep(_POLL_SECONDS)
+            await self._clock.sleep(seconds=_POLL_SECONDS)
         return JobOutcome.TIMED_OUT, "Smoke test timed out before the ready marker appeared."
 
     def _result(
         self,
-        request: JobRequest,
         *,
+        request: JobRequest,
         outcome: JobOutcome,
         message: str,
         artifact_dir: Path,
@@ -432,17 +436,17 @@ class LocalJobExecutor:
         )
 
     @staticmethod
-    def _artifact_dir(request: JobRequest) -> Path:
+    def _artifact_dir(*, request: JobRequest) -> Path:
         if _JOB_ID_PATTERN.fullmatch(request.job_id) is None:
             raise UnsafeJobIdentifierError
         root = Path(request.config.artifact_root).resolve()
         game_dir = Path(request.config.game_executable).parent.resolve()
         base_profile = Path(request.config.base_profile_dir).resolve()
-        if _is_within(root, parent=game_dir) or _is_within(root, parent=base_profile):
+        if _is_within(path=root, parent=game_dir) or _is_within(path=root, parent=base_profile):
             raise UnsafeArtifactPathError
         return root / request.job_id
 
-    def _environment_payload(self, config: PilotConfig) -> dict[str, object]:
+    def _environment_payload(self, *, config: PilotConfig) -> dict[str, object]:
         return {
             "schema_version": 1,
             "mod_debug_pilot": __version__,
@@ -497,7 +501,7 @@ class _BootstrapGuard:
         self._active = False
 
 
-def _file_contains(path: Path, *, marker: str) -> bool:
+def _file_contains(*, path: Path, marker: str) -> bool:
     if not path.is_file():
         return False
     try:
@@ -506,5 +510,5 @@ def _file_contains(path: Path, *, marker: str) -> bool:
         return False
 
 
-def _is_within(path: Path, *, parent: Path) -> bool:
+def _is_within(*, path: Path, parent: Path) -> bool:
     return path == parent or parent in path.parents

@@ -61,7 +61,7 @@ class ControllerIdentity:
         return base64.b64encode(raw).decode("ascii")
 
 
-def create_ephemeral_controller_identity(name: str) -> ControllerIdentity:
+def create_ephemeral_controller_identity(*, name: str) -> ControllerIdentity:
     """Create a memory-only signing identity for one approved web session."""
     normalized = name.strip()
     if not normalized or len(normalized) > 64:
@@ -92,7 +92,7 @@ class PairingRequest:
     approved: bool | None = None
 
 
-def create_agent_identity(directory: Path, *, passphrase: str, common_name: str) -> AgentIdentity:
+def create_agent_identity(*, directory: Path, passphrase: str, common_name: str) -> AgentIdentity:
     """Create an encrypted RSA key and self-signed TLS certificate."""
     if len(passphrase) < 12:
         raise IdentityError("Use an agent passphrase of at least 12 characters.")
@@ -126,11 +126,11 @@ def create_agent_identity(directory: Path, *, passphrase: str, common_name: str)
     return AgentIdentity(
         certificate_path=cert_path,
         private_key_path=key_path,
-        fingerprint=_certificate_fingerprint(certificate),
+        fingerprint=_certificate_fingerprint(certificate=certificate),
     )
 
 
-def load_agent_identity(directory: Path, *, passphrase: str) -> AgentIdentity:
+def load_agent_identity(*, directory: Path, passphrase: str) -> AgentIdentity:
     """Validate an existing encrypted TLS identity."""
     key_path = directory / "agent-key.pem"
     cert_path = directory / "agent-cert.pem"
@@ -149,11 +149,11 @@ def load_agent_identity(directory: Path, *, passphrase: str) -> AgentIdentity:
     return AgentIdentity(
         certificate_path=cert_path,
         private_key_path=key_path,
-        fingerprint=_certificate_fingerprint(certificate),
+        fingerprint=_certificate_fingerprint(certificate=certificate),
     )
 
 
-def server_ssl_context(identity: AgentIdentity, *, passphrase: str) -> ssl.SSLContext:
+def server_ssl_context(*, identity: AgentIdentity, passphrase: str) -> ssl.SSLContext:
     """Create a TLS 1.2+ server context from an encrypted identity."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -166,8 +166,8 @@ def server_ssl_context(identity: AgentIdentity, *, passphrase: str) -> ssl.SSLCo
 
 
 def create_controller_identity(
-    path: Path,
     *,
+    path: Path,
     passphrase: str,
     controller_name: str,
 ) -> ControllerIdentity:
@@ -193,11 +193,11 @@ def create_controller_identity(
     )
     controller_id = hashlib.sha256(public_raw).hexdigest()[:32]
     metadata = {"schema_version": 1, "controller_id": controller_id, "name": controller_name}
-    write_json_atomic(path.with_suffix(".json"), payload=metadata)
+    write_json_atomic(path=path.with_suffix(".json"), payload=metadata)
     return ControllerIdentity(controller_id=controller_id, name=controller_name, private_key=key)
 
 
-def load_controller_identity(path: Path, *, passphrase: str) -> ControllerIdentity:
+def load_controller_identity(*, path: Path, passphrase: str) -> ControllerIdentity:
     """Load and cross-check one encrypted controller identity."""
     try:
         key = serialization.load_pem_private_key(
@@ -228,8 +228,8 @@ def canonical_request(*, method: str, path: str, body: bytes, timestamp: str, no
 
 
 def signed_headers(
-    identity: ControllerIdentity,
     *,
+    identity: ControllerIdentity,
     method: str,
     path: str,
     body: bytes,
@@ -258,7 +258,7 @@ def signed_headers(
 class AuthorizationStore:
     """Persist the exact controller public keys approved by the agent operator."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, *, path: Path) -> None:
         """Create a store at a private application-data path."""
         self._path = path
         self._keys: dict[str, tuple[str, str]] = {}
@@ -267,7 +267,7 @@ class AuthorizationStore:
 
     def approve(self, *, controller_id: str, name: str, public_key_b64: str) -> None:
         """Persist one approved signing key."""
-        _decode_public_key(public_key_b64)
+        _decode_public_key(value=public_key_b64)
         self._keys[controller_id] = (name, public_key_b64)
         payload = {
             "schema_version": 1,
@@ -276,7 +276,7 @@ class AuthorizationStore:
                 for key, item in sorted(self._keys.items())
             },
         }
-        write_json_atomic(self._path, payload=payload)
+        write_json_atomic(path=self._path, payload=payload)
 
     def verify(
         self,
@@ -307,7 +307,7 @@ class AuthorizationStore:
         approved = self._keys.get(controller_id)
         if approved is None:
             raise AuthenticationError("Controller is not approved.")
-        public_key = _decode_public_key(approved[1])
+        public_key = _decode_public_key(value=approved[1])
         try:
             signature = base64.b64decode(signature_b64, validate=True)
             public_key.verify(
@@ -340,7 +340,7 @@ class AuthorizationStore:
                 public_key = item["public_key"]
                 if not isinstance(name, str) or not isinstance(public_key, str):
                     raise TypeError
-                _decode_public_key(public_key)
+                _decode_public_key(value=public_key)
                 self._keys[controller_id] = (name, public_key)
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise IdentityError("Approved-controller store is invalid.") from error
@@ -349,7 +349,7 @@ class AuthorizationStore:
 class PairingBroker:
     """Keep a short-lived one-time code and locally approved pending requests."""
 
-    def __init__(self, authorizations: AuthorizationStore) -> None:
+    def __init__(self, *, authorizations: AuthorizationStore) -> None:
         """Create an initially closed broker."""
         self._authorizations = authorizations
         self._code: str | None = None
@@ -387,7 +387,7 @@ class PairingBroker:
         # A correctly presented code is one-use even when the remaining payload is malformed.
         self._code = None
         self._attempts_remaining = 0
-        _decode_public_key(public_key_b64)
+        _decode_public_key(value=public_key_b64)
         expected_id = hashlib.sha256(base64.b64decode(public_key_b64)).hexdigest()[:32]
         if controller_id != expected_id:
             raise AuthenticationError("Controller identity does not match its key.")
@@ -407,7 +407,7 @@ class PairingBroker:
         """Return requests that still need a local decision."""
         return tuple(item for item in self._requests.values() if item.approved is None)
 
-    def decide(self, request_id: str, *, approve: bool) -> None:
+    def decide(self, *, request_id: str, approve: bool) -> None:
         """Apply the local operator's explicit decision."""
         request = self._requests[request_id]
         if request.approved is not None:
@@ -430,7 +430,7 @@ class PairingBroker:
                 public_key_b64=request.public_key_b64,
             )
 
-    def status(self, request_id: str, *, poll_token: str) -> bool | None:
+    def status(self, *, request_id: str, poll_token: str) -> bool | None:
         """Return pending/approved/rejected to the matching polling secret."""
         request = self._requests.get(request_id)
         if request is None or not secrets.compare_digest(request.poll_token, poll_token):
@@ -438,12 +438,12 @@ class PairingBroker:
         return request.approved
 
 
-def _certificate_fingerprint(certificate: x509.Certificate) -> str:
+def _certificate_fingerprint(*, certificate: x509.Certificate) -> str:
     digest = certificate.fingerprint(hashes.SHA256()).hex().upper()
     return ":".join(digest[index : index + 2] for index in range(0, len(digest), 2))
 
 
-def _decode_public_key(value: str) -> ed25519.Ed25519PublicKey:
+def _decode_public_key(*, value: str) -> ed25519.Ed25519PublicKey:
     try:
         raw = base64.b64decode(value, validate=True)
         return ed25519.Ed25519PublicKey.from_public_bytes(raw)

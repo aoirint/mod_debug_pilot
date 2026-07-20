@@ -44,7 +44,7 @@ _HTTP_CONFLICT = 409
 class RuntimeStub:
     """In-memory allow-listed runtime used behind the real HTTPS server."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, *, root: Path) -> None:
         """Create empty remote state."""
         self.root = root
         self.recovered = False
@@ -60,7 +60,7 @@ class RuntimeStub:
         """Record startup recovery."""
         self.recovered = True
 
-    async def install_profile(self, profile_id: str, bundle: bytes) -> str:
+    async def install_profile(self, *, profile_id: str, bundle: bytes) -> str:
         """Return a stable profile name."""
         self.maybe_fail()
         assert profile_id == "profile"
@@ -72,7 +72,7 @@ class RuntimeStub:
         self.maybe_fail()
         return tuple(self.instances.values())
 
-    async def launch(self, spec: InstanceSpec) -> InstanceSnapshot:
+    async def launch(self, *, spec: InstanceSpec) -> InstanceSnapshot:
         """Create one running snapshot."""
         self.maybe_fail()
         snapshot = InstanceSnapshot(
@@ -86,7 +86,7 @@ class RuntimeStub:
         self.instances[snapshot.instance_id] = snapshot
         return snapshot
 
-    async def stop(self, instance_id: str) -> InstanceSnapshot:
+    async def stop(self, *, instance_id: str) -> InstanceSnapshot:
         """Stop one known snapshot."""
         self.maybe_fail()
         current = self.instances[instance_id]
@@ -101,7 +101,7 @@ class RuntimeStub:
         self.instances[instance_id] = stopped
         return stopped
 
-    async def capture(self, instance_id: str) -> Path:
+    async def capture(self, *, instance_id: str) -> Path:
         """Create one screenshot artifact."""
         self.maybe_fail()
         path = self.root / instance_id / "screenshots" / "capture.png"
@@ -109,7 +109,7 @@ class RuntimeStub:
         path.write_bytes(b"png")
         return path
 
-    def artifact(self, instance_id: str, relative: str) -> Path:
+    def artifact(self, *, instance_id: str, relative: str) -> Path:
         """Resolve the screenshot written by capture."""
         self.maybe_fail()
         return self.root / instance_id / relative
@@ -122,17 +122,17 @@ def free_port() -> int:
         return cast(int, listener.getsockname()[1])
 
 
-def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
+def test_real_pinned_tls_pairing_and_remote_operations(*, tmp_path: Path) -> None:
     """A browser identity is locally approved before every signed operation works."""
 
     async def run() -> None:
         agent = create_agent_identity(
-            tmp_path / "identity", passphrase=_PASSPHRASE, common_name="Agent"
+            directory=tmp_path / "identity", passphrase=_PASSPHRASE, common_name="Agent"
         )
-        controller = create_ephemeral_controller_identity("Browser")
-        store = AuthorizationStore(tmp_path / "approved.json")
-        broker = PairingBroker(store)
-        runtime = RuntimeStub(tmp_path / "artifacts")
+        controller = create_ephemeral_controller_identity(name="Browser")
+        store = AuthorizationStore(path=tmp_path / "approved.json")
+        broker = PairingBroker(authorizations=store)
+        runtime = RuntimeStub(root=tmp_path / "artifacts")
         server = AgentApiServer(
             identity=AgentApiIdentity(agent_name="Agent", fingerprint=agent.fingerprint),
             runtime=cast(RemoteAgentRuntime, runtime),
@@ -144,14 +144,14 @@ def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
         await server.start(
             host="127.0.0.1",
             port=port,
-            ssl_context=server_ssl_context(agent, passphrase=_PASSPHRASE),
+            ssl_context=server_ssl_context(identity=agent, passphrase=_PASSPHRASE),
         )
         assert runtime.recovered
         with pytest.raises(RemoteApiError, match="already"):
             await server.start(
                 host="127.0.0.1",
                 port=port,
-                ssl_context=server_ssl_context(agent, passphrase=_PASSPHRASE),
+                ssl_context=server_ssl_context(identity=agent, passphrase=_PASSPHRASE),
             )
         client = AgentApiClient(
             base_url=f"https://127.0.0.1:{port}/",
@@ -160,17 +160,17 @@ def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
         )
         code = broker.open()
         request_id, token = await client.request_pairing(code=code)
-        assert await client.pairing_status(request_id, poll_token=token) == "pending"
-        broker.decide(request_id, approve=True)
-        assert await client.pairing_status(request_id, poll_token=token) == "approved"
-        assert await client.install_profile("profile", bundle=b"bundle") == "Installed"
-        launched = await client.launch(InstanceSpec(name="host", profile_id="profile"))
+        assert await client.pairing_status(request_id=request_id, poll_token=token) == "pending"
+        broker.decide(request_id=request_id, approve=True)
+        assert await client.pairing_status(request_id=request_id, poll_token=token) == "approved"
+        assert await client.install_profile(profile_id="profile", bundle=b"bundle") == "Installed"
+        launched = await client.launch(spec=InstanceSpec(name="host", profile_id="profile"))
         assert await client.list_instances() == (launched,)
-        artifact = await client.capture(launched.instance_id)
+        artifact = await client.capture(instance_id=launched.instance_id)
         assert artifact == "screenshots/capture.png"
         assert (
             await client.download_artifact(
-                launched.instance_id,
+                instance_id=launched.instance_id,
                 relative=artifact,
             )
             == b"png"
@@ -179,18 +179,20 @@ def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
             patch("mod_debug_pilot.infrastructure.remote_api._MAX_ARTIFACT", 2),
             pytest.raises(RemoteApiError, match="download limit"),
         ):
-            await client.download_artifact(launched.instance_id, relative=artifact)
+            await client.download_artifact(instance_id=launched.instance_id, relative=artifact)
         with pytest.raises(RemoteApiError, match="HTTP 404"):
             await client._request_bytes(  # noqa: SLF001
-                "GET",
+                method="GET",
                 path="/missing",
                 signed=True,
             )
-        assert (await client.stop(launched.instance_id)).status is InstanceStatus.STOPPED
+        assert (
+            await client.stop(instance_id=launched.instance_id)
+        ).status is InstanceStatus.STOPPED
 
         conflicting = AgentApiServer(
             identity=AgentApiIdentity(agent_name="Other", fingerprint=agent.fingerprint),
-            runtime=cast(RemoteAgentRuntime, RuntimeStub(tmp_path / "other")),
+            runtime=cast(RemoteAgentRuntime, RuntimeStub(root=tmp_path / "other")),
             authorizations=store,
             pairing=broker,
             max_upload_bytes=1024 * 1024,
@@ -199,7 +201,7 @@ def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
             await conflicting.start(
                 host="127.0.0.1",
                 port=port,
-                ssl_context=server_ssl_context(agent, passphrase=_PASSPHRASE),
+                ssl_context=server_ssl_context(identity=agent, passphrase=_PASSPHRASE),
             )
         await server.stop()
         await server.stop()
@@ -207,18 +209,18 @@ def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
-def test_remote_api_identity_pairing_errors_and_unauthorized(tmp_path: Path) -> None:
+def test_remote_api_identity_pairing_errors_and_unauthorized(*, tmp_path: Path) -> None:
     """Identity remains public while invalid pairing and unsigned calls are bounded."""
 
     async def run() -> None:
         agent = create_agent_identity(
-            tmp_path / "identity", passphrase=_PASSPHRASE, common_name="Agent"
+            directory=tmp_path / "identity", passphrase=_PASSPHRASE, common_name="Agent"
         )
-        store = AuthorizationStore(tmp_path / "approved.json")
-        broker = PairingBroker(store)
+        store = AuthorizationStore(path=tmp_path / "approved.json")
+        broker = PairingBroker(authorizations=store)
         server = AgentApiServer(
             identity=AgentApiIdentity(agent_name="Agent", fingerprint=agent.fingerprint),
-            runtime=cast(RemoteAgentRuntime, RuntimeStub(tmp_path / "artifacts")),
+            runtime=cast(RemoteAgentRuntime, RuntimeStub(root=tmp_path / "artifacts")),
             authorizations=store,
             pairing=broker,
             max_upload_bytes=1024 * 1024,
@@ -227,7 +229,7 @@ def test_remote_api_identity_pairing_errors_and_unauthorized(tmp_path: Path) -> 
         await server.start(
             host="127.0.0.1",
             port=port,
-            ssl_context=server_ssl_context(agent, passphrase=_PASSPHRASE),
+            ssl_context=server_ssl_context(identity=agent, passphrase=_PASSPHRASE),
         )
         fingerprint = aiohttp.Fingerprint(bytes.fromhex(agent.fingerprint.replace(":", "")))
         async with aiohttp.ClientSession() as session:
@@ -257,7 +259,7 @@ def test_remote_api_identity_pairing_errors_and_unauthorized(tmp_path: Path) -> 
 
 def test_api_client_validation_and_response_failures() -> None:
     """Address, JSON shape, required fields, lists, transport, and artifact bounds fail."""
-    identity = create_ephemeral_controller_identity("Controller")
+    identity = create_ephemeral_controller_identity(name="Controller")
     fingerprint = "AA:" * 31 + "AA"
     with pytest.raises(RemoteApiError, match="HTTPS"):
         AgentApiClient(base_url="http://agent", fingerprint=fingerprint, identity=identity)
@@ -268,12 +270,12 @@ def test_api_client_validation_and_response_failures() -> None:
             patch.object(client, "_request_bytes", AsyncMock(return_value=b"not-json")),
             pytest.raises(RemoteApiError, match="invalid JSON"),
         ):
-            await client._request("GET", path="/x", signed=False)  # noqa: SLF001
+            await client._request(method="GET", path="/x", signed=False)  # noqa: SLF001
         with (
             patch.object(client, "_request_bytes", AsyncMock(return_value=b"[]")),
             pytest.raises(RemoteApiError, match="response object"),
         ):
-            await client._request("GET", path="/x", signed=False)  # noqa: SLF001
+            await client._request(method="GET", path="/x", signed=False)  # noqa: SLF001
         with (
             patch.object(client, "_request", AsyncMock(return_value={"instances": {}})),
             pytest.raises(RemoteApiError, match="instance list"),
@@ -284,13 +286,13 @@ def test_api_client_validation_and_response_failures() -> None:
             patch.object(client, "_request_bytes", AsyncMock(return_value=b"xxx")),
             pytest.raises(RemoteApiError, match="download limit"),
         ):
-            await client.download_artifact("id", relative="a")
+            await client.download_artifact(instance_id="id", relative="a")
         with (
             patch("aiohttp.ClientSession.request", side_effect=aiohttp.ClientError),
             pytest.raises(RemoteApiError, match="connection"),
         ):
             await client._request_bytes(  # noqa: SLF001
-                "GET",
+                method="GET",
                 path="/x",
                 signed=False,
             )
@@ -304,20 +306,28 @@ def test_api_client_validation_and_response_failures() -> None:
             async def __aenter__(self) -> ErrorResponse:
                 return self
 
-            async def __aexit__(self, *_args: object) -> None:
+            async def __aexit__(  # keyword-only-exception: aiohttp mock ABI.
+                self, *_args: object
+            ) -> None:
                 pass
 
         class ErrorSession:
-            def __init__(self, *_args: object, **_kwargs: object) -> None:
+            def __init__(  # keyword-only-exception: aiohttp mock ABI.
+                self, *_args: object, **_kwargs: object
+            ) -> None:
                 """Ignore aiohttp session configuration."""
 
             async def __aenter__(self) -> ErrorSession:
                 return self
 
-            async def __aexit__(self, *_args: object) -> None:
+            async def __aexit__(  # keyword-only-exception: aiohttp mock ABI.
+                self, *_args: object
+            ) -> None:
                 pass
 
-            def request(self, *_args: object, **_kwargs: object) -> ErrorResponse:
+            def request(  # keyword-only-exception: aiohttp mock ABI.
+                self, *_args: object, **_kwargs: object
+            ) -> ErrorResponse:
                 return ErrorResponse()
 
         with (
@@ -325,7 +335,7 @@ def test_api_client_validation_and_response_failures() -> None:
             pytest.raises(RemoteApiError, match="HTTP 400"),
         ):
             await client._request_bytes(  # noqa: SLF001
-                "GET",
+                method="GET",
                 path="/x",
                 signed=False,
             )
@@ -335,26 +345,29 @@ def test_api_client_validation_and_response_failures() -> None:
 
 def test_api_helpers_and_error_statuses() -> None:
     """Wire helpers reject invalid JSON and map public error categories."""
-    assert bundle_digest(b"x") == "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
-    assert _required_string({"x": "ok"}, name="x") == "ok"
+    assert (
+        bundle_digest(bundle=b"x")
+        == "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+    )
+    assert _required_string(payload={"x": "ok"}, name="x") == "ok"
     for value in (None, ""):
         with pytest.raises(RemoteApiError):
-            _required_string({"x": value}, name="x")
-    assert _status_for(AuthenticationError()) == _HTTP_UNAUTHORIZED
-    assert _status_for(ProfileImportError()) == _HTTP_BAD_REQUEST
-    assert _status_for(ValueError()) == _HTTP_BAD_REQUEST
-    assert _status_for(OSError()) == _HTTP_CONFLICT
+            _required_string(payload={"x": value}, name="x")
+    assert _status_for(error=AuthenticationError()) == _HTTP_UNAUTHORIZED
+    assert _status_for(error=ProfileImportError()) == _HTTP_BAD_REQUEST
+    assert _status_for(error=ValueError()) == _HTTP_BAD_REQUEST
+    assert _status_for(error=OSError()) == _HTTP_CONFLICT
 
     request = AsyncMock()
     request.read = AsyncMock(return_value=b"[]")
     with pytest.raises(RemoteApiError, match="object"):
-        asyncio.run(_json_body(request))
+        asyncio.run(_json_body(request=request))
     request.read = AsyncMock(return_value=b"bad")
     with pytest.raises(RemoteApiError, match="invalid"):
-        asyncio.run(_json_body(request))
+        asyncio.run(_json_body(request=request))
     request.read = AsyncMock(return_value=b"x" * (64 * 1024 + 1))
     with pytest.raises(RemoteApiError, match="large"):
-        asyncio.run(_json_body(request))
+        asyncio.run(_json_body(request=request))
 
 
 @pytest.mark.parametrize(
@@ -366,35 +379,35 @@ def test_api_helpers_and_error_statuses() -> None:
     ],
 )
 def test_signed_route_failure_mapping(
-    tmp_path: Path, failure: BaseException, expected_status: int
+    *, tmp_path: Path, failure: BaseException, expected_status: int
 ) -> None:
     """Signed runtime failures retain their public 400/401/409 categories."""
 
     async def run() -> None:
         agent = create_agent_identity(
-            tmp_path / "identity", passphrase=_PASSPHRASE, common_name="Agent"
+            directory=tmp_path / "identity", passphrase=_PASSPHRASE, common_name="Agent"
         )
-        controller = create_ephemeral_controller_identity("Controller")
-        store = AuthorizationStore(tmp_path / "approved.json")
+        controller = create_ephemeral_controller_identity(name="Controller")
+        store = AuthorizationStore(path=tmp_path / "approved.json")
         store.approve(
             controller_id=controller.controller_id,
             name=controller.name,
             public_key_b64=controller.public_key_b64,
         )
-        runtime = RuntimeStub(tmp_path / "artifacts")
+        runtime = RuntimeStub(root=tmp_path / "artifacts")
         runtime.failure = failure
         server = AgentApiServer(
             identity=AgentApiIdentity(agent_name="Agent", fingerprint=agent.fingerprint),
             runtime=cast(RemoteAgentRuntime, runtime),
             authorizations=store,
-            pairing=PairingBroker(store),
+            pairing=PairingBroker(authorizations=store),
             max_upload_bytes=1024 * 1024,
         )
         port = free_port()
         await server.start(
             host="127.0.0.1",
             port=port,
-            ssl_context=server_ssl_context(agent, passphrase=_PASSPHRASE),
+            ssl_context=server_ssl_context(identity=agent, passphrase=_PASSPHRASE),
         )
         client = AgentApiClient(
             base_url=f"https://127.0.0.1:{port}",
@@ -403,21 +416,21 @@ def test_signed_route_failure_mapping(
         )
         if isinstance(failure, ProfileImportError):
             with pytest.raises(RemoteApiError, match=str(failure)):
-                await client.install_profile("profile", bundle=b"bundle")
+                await client.install_profile(profile_id="profile", bundle=b"bundle")
         else:
             with pytest.raises(RemoteApiError, match=str(failure)):
                 await client.list_instances()
             if isinstance(failure, AgentRuntimeError):
                 operations = (
-                    client.launch(InstanceSpec(name="x", profile_id="profile")),
-                    client.stop("instance"),
-                    client.capture("instance"),
-                    client.download_artifact("instance", relative="x"),
+                    client.launch(spec=InstanceSpec(name="x", profile_id="profile")),
+                    client.stop(instance_id="instance"),
+                    client.capture(instance_id="instance"),
+                    client.download_artifact(instance_id="instance", relative="x"),
                 )
                 for operation in operations:
                     with pytest.raises(RemoteApiError, match=str(failure)):
                         await operation
         await server.stop()
-        assert expected_status == _status_for(failure)
+        assert expected_status == _status_for(error=failure)
 
     asyncio.run(run())

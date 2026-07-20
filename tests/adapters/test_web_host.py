@@ -32,7 +32,7 @@ _MISDIRECTED_STATUS = 421
 class ServerStub:
     """Configurable Uvicorn server lifecycle."""
 
-    def __init__(self, _config: object, *, starts: bool = True, waits: bool = False) -> None:
+    def __init__(self, *, _config: object, starts: bool = True, waits: bool = False) -> None:
         """Configure start visibility and optional shutdown wait."""
         self.starts = starts
         self.waits = waits
@@ -41,12 +41,14 @@ class ServerStub:
         self._exit = asyncio.Event()
 
     @property
-    def should_exit(self) -> bool:
+    def should_exit(
+        self,
+    ) -> bool:  # keyword-only-exception: Python property setters receive values positionally.
         """Return whether shutdown was requested."""
         return self._should_exit
 
     @should_exit.setter
-    def should_exit(self, value: bool) -> None:
+    def should_exit(self, value: bool) -> None:  # noqa: PLR0917 -- keyword-only-exception: property and ASGI callbacks preserve the external signature.
         """Wake the server when shutdown is requested."""
         self._should_exit = value
         if value:
@@ -66,7 +68,7 @@ class AsgiStub:
         """Create an empty call ledger."""
         self.scopes: list[AsgiScope] = []
 
-    async def __call__(
+    async def __call__(  # noqa: PLR0917 -- keyword-only-exception: property and ASGI callbacks preserve the external signature.
         self,
         scope: AsgiScope,
         receive: AsgiReceive,
@@ -84,28 +86,28 @@ class MessageSink:
         """Create an empty message list."""
         self.messages: list[AsgiMessage] = []
 
-    async def __call__(self, message: AsgiMessage) -> None:
+    async def __call__(self, message: AsgiMessage) -> None:  # noqa: PLR0917 -- keyword-only-exception: property and ASGI callbacks preserve the external signature.
         """Append one message."""
         self.messages.append(message)
 
 
-def context_stub(tmp_path: Path) -> WebControllerContext:
+def context_stub(*, tmp_path: Path) -> WebControllerContext:
     """Return an opaque context because page composition is patched."""
     return cast(WebControllerContext, Mock(data_root=tmp_path))
 
 
-def test_web_host_exports_controller_and_starts_stops(tmp_path: Path) -> None:
+def test_web_host_exports_controller_and_starts_stops(*, tmp_path: Path) -> None:
     """The exported page callback and plain-HTTP lifecycle are owned."""
 
     async def run() -> None:
         exported: dict[str, object] = {}
 
-        def fake_run(page_main: object, **kwargs: object) -> object:
+        def fake_run(page_main: object, **kwargs: object) -> object:  # noqa: PLR0917 -- keyword-only-exception: Flet run callback ABI.
             exported["page_main"] = page_main
             exported.update(kwargs)
             return AsgiStub()
 
-        server = ServerStub(Mock())
+        server = ServerStub(_config=Mock())
         with (
             patch("mod_debug_pilot.infrastructure.web_host.ft.run", side_effect=fake_run),
             patch("mod_debug_pilot.infrastructure.web_host.uvicorn.Config") as config,
@@ -115,7 +117,7 @@ def test_web_host_exports_controller_and_starts_stops(tmp_path: Path) -> None:
                 AsyncMock(),
             ) as configure,
         ):
-            context = context_stub(tmp_path)
+            context = context_stub(tmp_path=tmp_path)
             host = FletWebHost(context=context, allowed_hosts=("127.0.0.1",))
             callback = cast(Callable[[ft.Page], Awaitable[None]], exported["page_main"])
             await callback(cast(ft.Page, FakePage()))
@@ -132,7 +134,7 @@ def test_web_host_exports_controller_and_starts_stops(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
-def test_web_host_reports_early_exit_and_timeout(tmp_path: Path) -> None:
+def test_web_host_reports_early_exit_and_timeout(*, tmp_path: Path) -> None:
     """Both an exited server and one that never becomes ready fail visibly."""
 
     async def run() -> None:
@@ -141,17 +143,21 @@ def test_web_host_reports_early_exit_and_timeout(tmp_path: Path) -> None:
             patch("mod_debug_pilot.infrastructure.web_host.uvicorn.Config"),
             patch(
                 "mod_debug_pilot.infrastructure.web_host.uvicorn.Server",
-                return_value=ServerStub(Mock(), starts=False),
+                return_value=ServerStub(_config=Mock(), starts=False),
             ),
         ):
-            host = FletWebHost(context=context_stub(tmp_path), allowed_hosts=("localhost",))
+            host = FletWebHost(
+                context=context_stub(tmp_path=tmp_path), allowed_hosts=("localhost",)
+            )
             with pytest.raises(WebHostError, match="could not start"):
                 await host.start(host="127.0.0.1", port=48951)
 
-        waiting = ServerStub(Mock(), starts=False, waits=True)
+        waiting = ServerStub(_config=Mock(), starts=False, waits=True)
         original_sleep = asyncio.sleep
 
-        async def fast_sleep(_seconds: float) -> None:
+        async def fast_sleep(  # keyword-only-exception: asyncio callback ABI.
+            _seconds: float,
+        ) -> None:
             await original_sleep(0)
 
         with (
@@ -160,7 +166,9 @@ def test_web_host_reports_early_exit_and_timeout(tmp_path: Path) -> None:
             patch("mod_debug_pilot.infrastructure.web_host.uvicorn.Server", return_value=waiting),
             patch("mod_debug_pilot.infrastructure.web_host.asyncio.sleep", side_effect=fast_sleep),
         ):
-            host = FletWebHost(context=context_stub(tmp_path), allowed_hosts=("localhost",))
+            host = FletWebHost(
+                context=context_stub(tmp_path=tmp_path), allowed_hosts=("localhost",)
+            )
             with pytest.raises(WebHostError, match="could not start"):
                 await host.start(host="127.0.0.1", port=48951)
             assert waiting.should_exit
@@ -173,13 +181,15 @@ def test_trusted_lan_guard_accepts_exact_http_and_websocket_origins() -> None:
 
     async def run() -> None:
         app = AsgiStub()
-        guard = TrustedLanGuard(app, allowed_hosts=("Agent.local", "192.168.1.8"))
+        guard = TrustedLanGuard(app=app, allowed_hosts=("Agent.local", "192.168.1.8"))
         sent: list[AsgiMessage] = []
 
-        async def receive() -> AsgiMessage:
+        async def receive() -> (
+            AsgiMessage
+        ):  # keyword-only-exception: ASGI invokes send callbacks positionally.
             return {}
 
-        async def send(message: AsgiMessage) -> None:
+        async def send(message: AsgiMessage) -> None:  # noqa: PLR0917 -- keyword-only-exception: property and ASGI callbacks preserve the external signature.
             sent.append(message)
 
         scopes: tuple[AsgiScope, ...] = (
@@ -207,7 +217,7 @@ def test_trusted_lan_guard_rejects_bad_host_origin_and_scope() -> None:
 
     async def run() -> None:
         app = AsgiStub()
-        guard = TrustedLanGuard(app, allowed_hosts=("agent.local",))
+        guard = TrustedLanGuard(app=app, allowed_hosts=("agent.local",))
 
         async def receive() -> AsgiMessage:
             return {}
@@ -264,20 +274,22 @@ def test_controller_host_discovery_url_and_validation() -> None:
             side_effect=[addresses, OSError("unresolved")],
         ),
     ):
-        hosts = discover_controller_hosts("0.0.0.0")  # noqa: S104 - Discovery fixture.
+        hosts = discover_controller_hosts(bind_host="0.0.0.0")  # noqa: S104 - Discovery fixture.
     assert "192.168.1.8" in hosts
-    assert preferred_controller_host(hosts) == "192.168.1.8"
-    assert controller_http_url("agent.local", port=48951) == ("http://agent.local:48951/controller")
-    assert controller_http_url("fe80::1", port=48951) == "http://[fe80::1]:48951/controller"
-    assert preferred_controller_host(("localhost", "agent.local")) == "agent.local"
-    assert preferred_controller_host(("localhost", "::1")) == "127.0.0.1"
-    assert "10.0.0.2" in discover_controller_hosts("10.0.0.2")
+    assert preferred_controller_host(hosts=hosts) == "192.168.1.8"
+    assert controller_http_url(host="agent.local", port=48951) == (
+        "http://agent.local:48951/controller"
+    )
+    assert controller_http_url(host="fe80::1", port=48951) == "http://[fe80::1]:48951/controller"
+    assert preferred_controller_host(hosts=("localhost", "agent.local")) == "agent.local"
+    assert preferred_controller_host(hosts=("localhost", "::1")) == "127.0.0.1"
+    assert "10.0.0.2" in discover_controller_hosts(bind_host="10.0.0.2")
     with (
         patch("mod_debug_pilot.infrastructure.web_host.socket.gethostname", return_value=""),
         patch("mod_debug_pilot.infrastructure.web_host.socket.getfqdn", return_value="agent"),
         patch("mod_debug_pilot.infrastructure.web_host.socket.getaddrinfo", return_value=[]),
     ):
-        assert "agent" in discover_controller_hosts("0.0.0.0")  # noqa: S104
+        assert "agent" in discover_controller_hosts(bind_host="0.0.0.0")  # noqa: S104
 
     for value in (
         "",
@@ -291,6 +303,6 @@ def test_controller_host_discovery_url_and_validation() -> None:
         "host:bad",
     ):
         with pytest.raises(WebHostError):
-            controller_http_url(value, port=48951)
+            controller_http_url(host=value, port=48951)
     with pytest.raises(WebHostError, match="at least one"):
-        TrustedLanGuard(AsgiStub(), allowed_hosts=("bad host",))
+        TrustedLanGuard(app=AsgiStub(), allowed_hosts=("bad host",))

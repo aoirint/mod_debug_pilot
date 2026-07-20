@@ -42,7 +42,7 @@ from tests.adapters.test_ui import FakePage
 class RuntimeStub:
     """Record remote profile and instance operations."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, *, root: Path) -> None:
         """Create one running instance fixture."""
         self.root = root
         self.shutdown_count = 0
@@ -58,12 +58,12 @@ class RuntimeStub:
             started_at="now",
         )
 
-    async def install_profile(self, profile_id: str, bundle: bytes) -> str:
+    async def install_profile(self, *, profile_id: str, bundle: bytes) -> str:
         """Record an immutable bundle upload."""
         self.installed = (profile_id, bundle)
         return profile_id
 
-    async def launch(self, spec: InstanceSpec) -> InstanceSnapshot:
+    async def launch(self, *, spec: InstanceSpec) -> InstanceSnapshot:
         """Record a launch."""
         self.launched.append(spec)
         return self.snapshot
@@ -72,12 +72,12 @@ class RuntimeStub:
         """Return one tracked process."""
         return (self.snapshot,)
 
-    async def stop(self, instance_id: str) -> InstanceSnapshot:
+    async def stop(self, *, instance_id: str) -> InstanceSnapshot:
         """Record exact task termination."""
         self.stopped.append(instance_id)
         return self.snapshot
 
-    async def capture(self, instance_id: str) -> Path:
+    async def capture(self, *, instance_id: str) -> Path:
         """Write a screenshot artifact."""
         path = self.root / instance_id / "capture.png"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +92,7 @@ class RuntimeStub:
 class ImporterStub:
     """Return one exact imported Thunderstore profile."""
 
-    async def import_code(self, code: str) -> ImportedProfile:
+    async def import_code(self, *, code: str) -> ImportedProfile:
         """Validate the UI passed the displayed code field."""
         assert code == "profile-code"
         return ImportedProfile(
@@ -106,7 +106,7 @@ class WorkspaceStub:
     """Create and edit a minimal browser draft."""
 
     async def materialize(
-        self, imported: ImportedProfile, *, destination: Path, local_mod: Path
+        self, *, imported: ImportedProfile, destination: Path, local_mod: Path
     ) -> None:
         """Materialize config and verify the temporary DLL exists."""
         assert imported.profile_name == "Imported"
@@ -116,24 +116,24 @@ class WorkspaceStub:
         config.write_text("Enabled = true\n", encoding="utf-8")
 
     @staticmethod
-    def config_files(profile: Path) -> tuple[Path, ...]:
+    def config_files(*, profile: Path) -> tuple[Path, ...]:
         """Return the one editable config."""
         return (profile / "BepInEx/config/plugin.cfg",)
 
     @staticmethod
-    def read_config(profile: Path, relative: str) -> str:
+    def read_config(*, profile: Path, relative: str) -> str:
         """Read the selected config."""
         return (profile / "BepInEx/config" / relative).read_text(encoding="utf-8")
 
     @staticmethod
-    def write_config(profile: Path, relative: str, content: str) -> None:
+    def write_config(*, profile: Path, relative: str, content: str) -> None:
         """Write the selected config."""
         (profile / "BepInEx/config" / relative).write_text(content, encoding="utf-8")
 
     @staticmethod
     def create_bundle(
-        profile: Path,
         *,
+        profile: Path,
         profile_name: str,
         source_mods: Iterable[str],
         destination: Path,
@@ -147,11 +147,13 @@ class WorkspaceStub:
         return Mock(files=(1, 2, 3))
 
 
-def make_web_view(tmp_path: Path) -> tuple[WebControllerView, FakePage, PairingBroker, RuntimeStub]:
+def make_web_view(
+    *, tmp_path: Path
+) -> tuple[WebControllerView, FakePage, PairingBroker, RuntimeStub]:
     """Compose a browser view with deterministic shared services."""
     page = FakePage()
-    broker = PairingBroker(AuthorizationStore(tmp_path / "approved.json"))
-    runtime = RuntimeStub(tmp_path / "artifacts")
+    broker = PairingBroker(authorizations=AuthorizationStore(path=tmp_path / "approved.json"))
+    runtime = RuntimeStub(root=tmp_path / "artifacts")
     context = WebControllerContext(
         pairing=broker,
         importer=cast(ThunderstoreProfileImporter, ImporterStub()),
@@ -159,14 +161,14 @@ def make_web_view(tmp_path: Path) -> tuple[WebControllerView, FakePage, PairingB
         runtime=cast(RemoteAgentRuntime, runtime),
         data_root=tmp_path / "data",
     )
-    return WebControllerView(cast(ft.Page, page), context=context), page, broker, runtime
+    return WebControllerView(page=cast(ft.Page, page), context=context), page, broker, runtime
 
 
-def test_web_controller_pair_import_edit_install_launch_and_actions(tmp_path: Path) -> None:
+def test_web_controller_pair_import_edit_install_launch_and_actions(*, tmp_path: Path) -> None:
     """One approved browser session exercises the entire controller workflow."""
 
     async def run() -> None:
-        view, page, broker, runtime = make_web_view(tmp_path)
+        view, page, broker, runtime = make_web_view(tmp_path=tmp_path)
         assert view.build() is not None
         assert all(control.disabled for control in view._privileged_controls)  # noqa: SLF001
         code = broker.open()
@@ -175,7 +177,7 @@ def test_web_controller_pair_import_edit_install_launch_and_actions(tmp_path: Pa
         await view._check_approval_action()  # noqa: SLF001
         assert "waiting" in str(view.status.value)
         pending = broker.pending()[0]
-        broker.decide(pending.request_id, approve=True)
+        broker.decide(request_id=pending.request_id, approve=True)
         await view._check_approval_action()  # noqa: SLF001
         assert "Approved" in str(view.status.value)
 
@@ -200,20 +202,20 @@ def test_web_controller_pair_import_edit_install_launch_and_actions(tmp_path: Pa
         assert len(view.instances.controls) == 1
 
         view._picker.save_file = AsyncMock()  # type: ignore[method-assign]  # noqa: SLF001
-        await view._capture_handler("instance")()  # noqa: SLF001
+        await view._capture_handler(instance_id="instance")()  # noqa: SLF001
         view._picker.save_file.assert_awaited_once()  # noqa: SLF001
-        await view._stop_handler("instance")()  # noqa: SLF001
+        await view._stop_handler(instance_id="instance")()  # noqa: SLF001
         assert runtime.stopped == ["instance"]
         assert page.update_count > 0
 
     asyncio.run(run())
 
 
-def test_web_controller_rejection_selection_and_validation_branches(tmp_path: Path) -> None:
+def test_web_controller_rejection_selection_and_validation_branches(*, tmp_path: Path) -> None:
     """Unapproved, rejected, missing, invalid, oversized, and non-numbered paths are safe."""
 
     async def run() -> None:
-        view, _page, broker, _ = make_web_view(tmp_path)
+        view, _page, broker, _ = make_web_view(tmp_path=tmp_path)
         await view._choose_mod(ft.Event("click", ft.OutlinedButton()))  # noqa: SLF001
         with pytest.raises(AuthenticationError, match="not approved"):
             view._require_approved()  # noqa: SLF001
@@ -223,7 +225,7 @@ def test_web_controller_rejection_selection_and_validation_branches(tmp_path: Pa
         view.pairing_code.value = code
         await view._request_pairing_action()  # noqa: SLF001
         pending = broker.pending()[0]
-        broker.decide(pending.request_id, approve=False)
+        broker.decide(request_id=pending.request_id, approve=False)
         await view._check_approval_action()  # noqa: SLF001
         assert "rejected" in str(view.status.value)
 
@@ -254,24 +256,24 @@ def test_web_controller_rejection_selection_and_validation_branches(tmp_path: Pa
             await view._import_profile_action()  # noqa: SLF001
         view.instance_name.value = "host"
         view._increment_instance_fields(  # noqa: SLF001
-            InstanceSpec(name="host", profile_id="debug-profile", debugger_port=55555)
+            spec=InstanceSpec(name="host", profile_id="debug-profile", debugger_port=55555)
         )
         assert view.instance_name.value == "host"
 
         async def fail() -> None:
             raise OSError("visible")
 
-        await view._perform(fail)  # noqa: SLF001
+        await view._perform(action=fail)  # noqa: SLF001
         assert view.status.value == "visible"
 
     asyncio.run(run())
 
 
-def test_web_controller_event_wrappers_and_page_configuration(tmp_path: Path) -> None:
+def test_web_controller_event_wrappers_and_page_configuration(*, tmp_path: Path) -> None:
     """Flet event boundaries delegate and the hosted page receives its product theme."""
 
     async def run() -> None:
-        view, _, _, _ = make_web_view(tmp_path)
+        view, _, _, _ = make_web_view(tmp_path=tmp_path)
         event = ft.Event("click", ft.Button())
         for method, action_name in (
             (view._request_pairing, "_request_pairing_action"),  # noqa: SLF001
@@ -315,7 +317,7 @@ class ServiceStub:
 
 @contextmanager
 def patched_agent_services(
-    tmp_path: Path, runtime: RuntimeStub, api: ServiceStub, web: ServiceStub
+    *, tmp_path: Path, runtime: RuntimeStub, api: ServiceStub, web: ServiceStub
 ) -> Iterator[None]:
     """Patch native Agent service composition for one lexical scope."""
     identity = AgentIdentity(
@@ -336,7 +338,7 @@ def patched_agent_services(
         yield
 
 
-def set_agent_fields(view: AgentView, tmp_path: Path) -> None:
+def set_agent_fields(*, view: AgentView, tmp_path: Path) -> None:
     """Fill the native form with valid wire values."""
     values = {
         "agent_name": "Agent",
@@ -353,17 +355,17 @@ def set_agent_fields(view: AgentView, tmp_path: Path) -> None:
     view.passphrase.value = "native agent passphrase"
 
 
-def test_agent_view_start_pair_approve_kill_stop_and_close(tmp_path: Path) -> None:
+def test_agent_view_start_pair_approve_kill_stop_and_close(*, tmp_path: Path) -> None:
     """The native owner explicitly starts, approves, kills, and restores services."""
 
     async def run() -> None:
         page = FakePage()
-        runtime = RuntimeStub(tmp_path / "artifacts")
+        runtime = RuntimeStub(root=tmp_path / "artifacts")
         api = ServiceStub()
         web = ServiceStub()
-        view = AgentView(cast(ft.Page, page), application_data=tmp_path / "app")
-        set_agent_fields(view, tmp_path)
-        with patched_agent_services(tmp_path, runtime, api, web):
+        view = AgentView(page=cast(ft.Page, page), application_data=tmp_path / "app")
+        set_agent_fields(view=view, tmp_path=tmp_path)
+        with patched_agent_services(tmp_path=tmp_path, runtime=runtime, api=api, web=web):
             await view._start_services()  # noqa: SLF001
             assert api.started
             assert web.started
@@ -372,7 +374,7 @@ def test_agent_view_start_pair_approve_kill_stop_and_close(tmp_path: Path) -> No
                 await view._start_services()  # noqa: SLF001
             await view._open_pairing(ft.Event("click", ft.Button()))  # noqa: SLF001
             assert "10 minutes" in str(view.pairing_code.value)
-            identity = create_ephemeral_controller_identity("Browser")
+            identity = create_ephemeral_controller_identity(name="Browser")
             pairing = view._pairing  # noqa: SLF001
             assert pairing is not None
             request = pairing.request(
@@ -386,7 +388,7 @@ def test_agent_view_start_pair_approve_kill_stop_and_close(tmp_path: Path) -> No
             await view._decision_handler(request, approve=True)()  # noqa: SLF001
             assert "Approved" in str(view.status.value)
             await view._refresh_instances_action()  # noqa: SLF001
-            await view._kill_handler("instance")(ft.Event("click", ft.Button()))  # noqa: SLF001
+            await view._kill_handler(instance_id="instance")(ft.Event("click", ft.Button()))  # noqa: SLF001
             assert runtime.stopped == ["instance"]
             await view.close()
             assert runtime.shutdown_count == 1
@@ -396,18 +398,19 @@ def test_agent_view_start_pair_approve_kill_stop_and_close(tmp_path: Path) -> No
 
 
 def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR0915
+    *,
     tmp_path: Path,
 ) -> None:
     """Startup rollback, stopped guards, error display, and settings fallback work."""
 
     async def run() -> None:
         page = FakePage()
-        runtime = RuntimeStub(tmp_path / "artifacts")
+        runtime = RuntimeStub(root=tmp_path / "artifacts")
         api = ServiceStub(fail_start=True)
         web = ServiceStub()
         app = tmp_path / "app"
-        view = AgentView(cast(ft.Page, page), application_data=app)
-        set_agent_fields(view, tmp_path)
+        view = AgentView(page=cast(ft.Page, page), application_data=app)
+        set_agent_fields(view=view, tmp_path=tmp_path)
         await view._open_pairing(ft.Event("click", ft.Button()))  # noqa: SLF001
         await view._refresh_pending(ft.Event("click", ft.OutlinedButton()))  # noqa: SLF001
         await view._decision_handler(  # noqa: SLF001
@@ -415,7 +418,7 @@ def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR091
         )()
         with pytest.raises(OSError, match="first"):
             await view._refresh_instances_action()  # noqa: SLF001
-        with patched_agent_services(tmp_path, runtime, api, web):
+        with patched_agent_services(tmp_path=tmp_path, runtime=runtime, api=api, web=web):
             with pytest.raises(OSError, match="listen"):
                 await view._start_services()  # noqa: SLF001
             assert web.stopped == 1
@@ -430,19 +433,19 @@ def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR091
                 ft.Event("click", ft.OutlinedButton())
             )
             refresh.assert_awaited_once()
-        await view._kill_handler("missing")(ft.Event("click", ft.Button()))  # noqa: SLF001
+        await view._kill_handler(instance_id="missing")(ft.Event("click", ft.Button()))  # noqa: SLF001
         assert view.status.value == "Agent runtime is not running."
 
         async def fail() -> None:
             raise OSError("visible")
 
-        await view._perform(fail)  # noqa: SLF001
+        await view._perform(action=fail)  # noqa: SLF001
         assert view.status.value == "visible"
         await view._stop(ft.Event("click", ft.Button()))  # noqa: SLF001
 
         app.mkdir(exist_ok=True)
         (app / "agent-settings.json").write_text("bad", encoding="utf-8")
-        fallback = AgentView(cast(ft.Page, FakePage()), application_data=app)
+        fallback = AgentView(page=cast(ft.Page, FakePage()), application_data=app)
         assert "agent-runtime" in str(fallback.fields["data_root"].value)
         (app / "agent-settings.json").write_text(
             json.dumps(
@@ -456,7 +459,7 @@ def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR091
             ),
             encoding="utf-8",
         )
-        loaded = AgentView(cast(ft.Page, FakePage()), application_data=app)
+        loaded = AgentView(page=cast(ft.Page, FakePage()), application_data=app)
         assert loaded.fields["agent_name"].value == "Saved"
 
         identity_dir = app / "identity"
@@ -465,7 +468,9 @@ def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR091
         existing_api = ServiceStub()
         existing_web = ServiceStub()
         with (
-            patched_agent_services(tmp_path, runtime, existing_api, existing_web),
+            patched_agent_services(
+                tmp_path=tmp_path, runtime=runtime, api=existing_api, web=existing_web
+            ),
             patch("mod_debug_pilot.ui.agent_app.load_agent_identity") as load,
         ):
             load.return_value = AgentIdentity(
@@ -473,7 +478,7 @@ def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR091
                 private_key_path=tmp_path / "key",
                 fingerprint="AA:" * 31 + "AA",
             )
-            set_agent_fields(loaded, tmp_path)
+            set_agent_fields(view=loaded, tmp_path=tmp_path)
             await loaded._start_services()  # noqa: SLF001
             load.assert_called_once()
             await loaded.close()
@@ -481,7 +486,7 @@ def test_agent_view_service_failure_guards_defaults_and_perform(  # noqa: PLR091
     asyncio.run(run())
 
 
-def test_agent_page_configuration_and_close_handlers(tmp_path: Path) -> None:
+def test_agent_page_configuration_and_close_handlers(*, tmp_path: Path) -> None:
     """Native entry configuration mounts the Agent and owns both close signals."""
 
     async def run() -> None:

@@ -16,7 +16,7 @@ from tests.adapters.test_ui import FakePage
 from tests.unit.test_presentation import make_controller
 
 
-def test_composition_uses_explicit_and_platform_data_directories(tmp_path: Path) -> None:
+def test_composition_uses_explicit_and_platform_data_directories(*, tmp_path: Path) -> None:
     """Composition accepts a test seam and otherwise resolves platform storage."""
     explicit = compose_controller(data_dir=tmp_path / "explicit")
     asyncio.run(explicit.initialize())

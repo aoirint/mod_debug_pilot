@@ -35,84 +35,90 @@ _SHA256_OCTETS = 32
 _PAIRING_CODE_DIGITS = 8
 
 
-def test_agent_identity_create_load_and_tls_context(tmp_path: Path) -> None:
+def test_agent_identity_create_load_and_tls_context(*, tmp_path: Path) -> None:
     """The encrypted key matches its certificate and fingerprint on reload."""
-    identity = create_agent_identity(tmp_path, passphrase=_PASSPHRASE, common_name="Agent")
-    loaded = load_agent_identity(tmp_path, passphrase=_PASSPHRASE)
-    context = server_ssl_context(loaded, passphrase=_PASSPHRASE)
+    identity = create_agent_identity(
+        directory=tmp_path, passphrase=_PASSPHRASE, common_name="Agent"
+    )
+    loaded = load_agent_identity(directory=tmp_path, passphrase=_PASSPHRASE)
+    context = server_ssl_context(identity=loaded, passphrase=_PASSPHRASE)
 
     assert loaded == identity
     assert len(identity.fingerprint.split(":")) == _SHA256_OCTETS
     assert context.minimum_version is not None
     with pytest.raises(IdentityError):
-        create_agent_identity(tmp_path, passphrase=_PASSPHRASE, common_name="Agent")
+        create_agent_identity(directory=tmp_path, passphrase=_PASSPHRASE, common_name="Agent")
 
 
-def test_agent_identity_rejects_passphrase_and_mismatch(tmp_path: Path) -> None:
+def test_agent_identity_rejects_passphrase_and_mismatch(*, tmp_path: Path) -> None:
     """Short, incorrect, missing, and mismatched key material fails generically."""
     with pytest.raises(IdentityError):
         create_agent_identity(
-            tmp_path / "short",
+            directory=tmp_path / "short",
             passphrase=_SHORT_PASSPHRASE,
             common_name="Agent",
         )
-    first = create_agent_identity(tmp_path / "one", passphrase=_PASSPHRASE, common_name="One")
-    second = create_agent_identity(tmp_path / "two", passphrase=_PASSPHRASE, common_name="Two")
+    first = create_agent_identity(
+        directory=tmp_path / "one", passphrase=_PASSPHRASE, common_name="One"
+    )
+    second = create_agent_identity(
+        directory=tmp_path / "two", passphrase=_PASSPHRASE, common_name="Two"
+    )
     with pytest.raises(IdentityError):
-        load_agent_identity(tmp_path / "one", passphrase=_WRONG_PASSPHRASE)
+        load_agent_identity(directory=tmp_path / "one", passphrase=_WRONG_PASSPHRASE)
     shutil.copy2(second.certificate_path, first.certificate_path)
     with pytest.raises(IdentityError):
-        load_agent_identity(tmp_path / "one", passphrase=_PASSPHRASE)
+        load_agent_identity(directory=tmp_path / "one", passphrase=_PASSPHRASE)
     with pytest.raises(IdentityError):
-        load_agent_identity(tmp_path / "missing", passphrase=_PASSPHRASE)
+        load_agent_identity(directory=tmp_path / "missing", passphrase=_PASSPHRASE)
 
 
-def test_controller_identity_create_load_and_metadata(tmp_path: Path) -> None:
+def test_controller_identity_create_load_and_metadata(*, tmp_path: Path) -> None:
     """Controller IDs derive from the exact encrypted Ed25519 public key."""
     path = tmp_path / "controller.pem"
     created = create_controller_identity(
-        path,
+        path=path,
         passphrase=_PASSPHRASE,
         controller_name="Controller",
     )
-    loaded = load_controller_identity(path, passphrase=_PASSPHRASE)
+    loaded = load_controller_identity(path=path, passphrase=_PASSPHRASE)
 
     assert loaded.controller_id == created.controller_id
     assert loaded.public_key_b64 == created.public_key_b64
     with pytest.raises(IdentityError):
-        create_controller_identity(path, passphrase=_PASSPHRASE, controller_name="Again")
+        create_controller_identity(path=path, passphrase=_PASSPHRASE, controller_name="Again")
 
 
-def test_controller_identity_rejections(tmp_path: Path) -> None:
+def test_controller_identity_rejections(*, tmp_path: Path) -> None:
     """Identity creation and loading reject invalid secrets and metadata."""
     with pytest.raises(IdentityError):
         create_controller_identity(
-            tmp_path / "short.pem",
+            path=tmp_path / "short.pem",
             passphrase=_SHORT_PASSPHRASE,
             controller_name="Controller",
         )
     with pytest.raises(IdentityError):
         create_controller_identity(
-            tmp_path / "empty.pem",
+            path=tmp_path / "empty.pem",
             passphrase=_PASSPHRASE,
             controller_name="",
         )
     with pytest.raises(IdentityError):
         create_controller_identity(
-            tmp_path / "long.pem",
+            path=tmp_path / "long.pem",
             passphrase=_PASSPHRASE,
             controller_name="x" * 65,
         )
     path = tmp_path / "controller.pem"
-    create_controller_identity(path, passphrase=_PASSPHRASE, controller_name="Controller")
+    create_controller_identity(path=path, passphrase=_PASSPHRASE, controller_name="Controller")
     with pytest.raises(IdentityError):
-        load_controller_identity(path, passphrase=_INCORRECT_PASSPHRASE)
+        load_controller_identity(path=path, passphrase=_INCORRECT_PASSPHRASE)
     path.with_suffix(".json").write_text("{}", encoding="utf-8")
     with pytest.raises(IdentityError):
-        load_controller_identity(path, passphrase=_PASSPHRASE)
+        load_controller_identity(path=path, passphrase=_PASSPHRASE)
     path.write_text("not a key", encoding="utf-8")
     with pytest.raises(IdentityError):
-        load_controller_identity(path, passphrase=_PASSPHRASE)
+        load_controller_identity(path=path, passphrase=_PASSPHRASE)
     rsa_path = tmp_path / "rsa.pem"
     rsa_path.write_bytes(
         rsa.generate_private_key(public_exponent=65537, key_size=2048).private_bytes(
@@ -123,31 +129,31 @@ def test_controller_identity_rejections(tmp_path: Path) -> None:
     )
     rsa_path.with_suffix(".json").write_text("{}", encoding="utf-8")
     with pytest.raises(IdentityError, match="identity is invalid"):
-        load_controller_identity(rsa_path, passphrase=_PASSPHRASE)
+        load_controller_identity(path=rsa_path, passphrase=_PASSPHRASE)
 
 
 def test_ephemeral_controller_validation() -> None:
     """Web sessions receive memory-only unique signing identities."""
-    first = create_ephemeral_controller_identity(" Browser ")
-    second = create_ephemeral_controller_identity("Browser")
+    first = create_ephemeral_controller_identity(name=" Browser ")
+    second = create_ephemeral_controller_identity(name="Browser")
     assert first.name == "Browser"
     assert first.controller_id != second.controller_id
     for name in ("", "x" * 65):
         with pytest.raises(IdentityError):
-            create_ephemeral_controller_identity(name)
+            create_ephemeral_controller_identity(name=name)
 
 
-def test_signed_request_verification_and_replay(tmp_path: Path) -> None:
+def test_signed_request_verification_and_replay(*, tmp_path: Path) -> None:
     """An approved signature verifies once and binds method, path, and body."""
-    identity = create_ephemeral_controller_identity("Controller")
-    store = AuthorizationStore(tmp_path / "approved.json")
+    identity = create_ephemeral_controller_identity(name="Controller")
+    store = AuthorizationStore(path=tmp_path / "approved.json")
     store.approve(
         controller_id=identity.controller_id,
         name=identity.name,
         public_key_b64=identity.public_key_b64,
     )
     headers = signed_headers(
-        identity,
+        identity=identity,
         method="POST",
         path="/v1/test",
         body=b"payload",
@@ -186,17 +192,17 @@ def test_signed_request_verification_and_replay(tmp_path: Path) -> None:
         )
 
 
-def test_signature_failure_modes(tmp_path: Path) -> None:
+def test_signature_failure_modes(*, tmp_path: Path) -> None:
     """Stale, malformed, unknown, tampered, and invalid signatures fail closed."""
-    identity = create_ephemeral_controller_identity("Controller")
-    store = AuthorizationStore(tmp_path / "approved.json")
+    identity = create_ephemeral_controller_identity(name="Controller")
+    store = AuthorizationStore(path=tmp_path / "approved.json")
     store.approve(
         controller_id=identity.controller_id,
         name=identity.name,
         public_key_b64=identity.public_key_b64,
     )
     headers = signed_headers(
-        identity,
+        identity=identity,
         method="GET",
         path="/x",
         body=b"",
@@ -225,17 +231,17 @@ def test_signature_failure_modes(tmp_path: Path) -> None:
         store.verify(**{**common, "signature_b64": "%%%"})  # type: ignore[arg-type]
 
 
-def test_authorization_store_reload_and_corruption(tmp_path: Path) -> None:
+def test_authorization_store_reload_and_corruption(*, tmp_path: Path) -> None:
     """Approved keys survive reload while every malformed store shape is rejected."""
-    identity = create_ephemeral_controller_identity("Controller")
+    identity = create_ephemeral_controller_identity(name="Controller")
     path = tmp_path / "approved.json"
-    store = AuthorizationStore(path)
+    store = AuthorizationStore(path=path)
     store.approve(
         controller_id=identity.controller_id,
         name=identity.name,
         public_key_b64=identity.public_key_b64,
     )
-    AuthorizationStore(path)
+    AuthorizationStore(path=path)
 
     invalid_payloads = [
         "not json",
@@ -249,16 +255,16 @@ def test_authorization_store_reload_and_corruption(tmp_path: Path) -> None:
         corrupt = tmp_path / f"corrupt-{index}.json"
         corrupt.write_text(payload, encoding="utf-8")
         with pytest.raises(IdentityError):
-            AuthorizationStore(corrupt)
+            AuthorizationStore(path=corrupt)
     with pytest.raises(AuthenticationError):
         store.approve(controller_id="id", name="n", public_key_b64="bad")
 
 
-def test_pairing_approval_rejection_and_expiry(tmp_path: Path) -> None:
+def test_pairing_approval_rejection_and_expiry(*, tmp_path: Path) -> None:
     """The one-time code creates one pending request requiring a local decision."""
-    store = AuthorizationStore(tmp_path / "approved.json")
-    broker = PairingBroker(store)
-    identity = create_ephemeral_controller_identity("Browser")
+    store = AuthorizationStore(path=tmp_path / "approved.json")
+    broker = PairingBroker(authorizations=store)
+    identity = create_ephemeral_controller_identity(name="Browser")
     code = broker.open(now=100)
     assert len(code) == _PAIRING_CODE_DIGITS
     pending = broker.request(
@@ -269,12 +275,12 @@ def test_pairing_approval_rejection_and_expiry(tmp_path: Path) -> None:
         now=101,
     )
     assert broker.pending() == (pending,)
-    assert broker.status(pending.request_id, poll_token=pending.poll_token) is None
-    broker.decide(pending.request_id, approve=True)
+    assert broker.status(request_id=pending.request_id, poll_token=pending.poll_token) is None
+    broker.decide(request_id=pending.request_id, approve=True)
     assert broker.pending() == ()
-    assert broker.status(pending.request_id, poll_token=pending.poll_token) is True
+    assert broker.status(request_id=pending.request_id, poll_token=pending.poll_token) is True
     with pytest.raises(AuthenticationError, match="already decided"):
-        broker.decide(pending.request_id, approve=False)
+        broker.decide(request_id=pending.request_id, approve=False)
 
     code = broker.open(now=200)
     rejected = broker.request(
@@ -284,8 +290,8 @@ def test_pairing_approval_rejection_and_expiry(tmp_path: Path) -> None:
         public_key_b64=identity.public_key_b64,
         now=201,
     )
-    broker.decide(rejected.request_id, approve=False)
-    assert broker.status(rejected.request_id, poll_token=rejected.poll_token) is False
+    broker.decide(request_id=rejected.request_id, approve=False)
+    assert broker.status(request_id=rejected.request_id, poll_token=rejected.poll_token) is False
 
     expired = broker.open(now=300)
     with pytest.raises(AuthenticationError, match="expired"):
@@ -298,10 +304,10 @@ def test_pairing_approval_rejection_and_expiry(tmp_path: Path) -> None:
         )
 
 
-def test_pairing_rejects_wrong_code_key_id_and_poll_token(tmp_path: Path) -> None:
+def test_pairing_rejects_wrong_code_key_id_and_poll_token(*, tmp_path: Path) -> None:
     """Pairing secrets and public-key-derived IDs cannot be substituted."""
-    broker = PairingBroker(AuthorizationStore(tmp_path / "approved.json"))
-    identity = create_ephemeral_controller_identity("Browser")
+    broker = PairingBroker(authorizations=AuthorizationStore(path=tmp_path / "approved.json"))
+    identity = create_ephemeral_controller_identity(name="Browser")
     code = broker.open(now=1)
     with pytest.raises(AuthenticationError, match="expired"):
         broker.request(
@@ -338,14 +344,14 @@ def test_pairing_rejects_wrong_code_key_id_and_poll_token(tmp_path: Path) -> Non
         now=8,
     )
     with pytest.raises(AuthenticationError, match="not found"):
-        broker.status(pending.request_id, poll_token=_WRONG_POLL_TOKEN)
+        broker.status(request_id=pending.request_id, poll_token=_WRONG_POLL_TOKEN)
 
 
-def test_pairing_bounds_guesses_and_keeps_web_approval_ephemeral(tmp_path: Path) -> None:
+def test_pairing_bounds_guesses_and_keeps_web_approval_ephemeral(*, tmp_path: Path) -> None:
     """Five wrong guesses close pairing and Web approval writes no durable key."""
     authorization_path = tmp_path / "approved.json"
-    broker = PairingBroker(AuthorizationStore(authorization_path))
-    identity = create_ephemeral_controller_identity("Browser")
+    broker = PairingBroker(authorizations=AuthorizationStore(path=authorization_path))
+    identity = create_ephemeral_controller_identity(name="Browser")
     code = broker.open(now=1)
     for attempt in range(5):
         with pytest.raises(AuthenticationError, match="expired"):
@@ -374,6 +380,6 @@ def test_pairing_bounds_guesses_and_keeps_web_approval_ephemeral(tmp_path: Path)
         persist_authorization=False,
         now=5,
     )
-    broker.decide(pending.request_id, approve=True)
-    assert broker.status(pending.request_id, poll_token=pending.poll_token) is True
+    broker.decide(request_id=pending.request_id, approve=True)
+    assert broker.status(request_id=pending.request_id, poll_token=pending.poll_token) is True
     assert not authorization_path.exists()

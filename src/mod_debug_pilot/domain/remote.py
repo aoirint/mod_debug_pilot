@@ -40,7 +40,7 @@ class AgentSettings:
     save_directory: str = ""
 
     @classmethod
-    def from_mapping(cls, value: object) -> AgentSettings:
+    def from_mapping(cls, *, value: object) -> AgentSettings:
         """Parse and validate a settings form or JSON object."""
         if not isinstance(value, dict):
             raise RemoteValidationError("Agent settings must be an object.")
@@ -108,7 +108,7 @@ class FileRecord:
         return {"path": self.path, "size": self.size, "sha256": self.sha256}
 
     @classmethod
-    def from_mapping(cls, value: object) -> FileRecord:
+    def from_mapping(cls, *, value: object) -> FileRecord:
         """Parse an untrusted wire representation."""
         if not isinstance(value, dict):
             raise RemoteValidationError("Bundle file record must be an object.")
@@ -152,7 +152,7 @@ class BundleManifest:
         }
 
     @classmethod
-    def from_mapping(cls, value: object) -> BundleManifest:
+    def from_mapping(cls, *, value: object) -> BundleManifest:
         """Parse an untrusted manifest object."""
         if not isinstance(value, dict):
             raise RemoteValidationError("Bundle manifest must be an object.")
@@ -174,7 +174,7 @@ class BundleManifest:
             profile_name=profile_name,
             created_at=created_at,
             schema_version=schema_version,
-            files=tuple(FileRecord.from_mapping(item) for item in raw_files),
+            files=tuple(FileRecord.from_mapping(value=item) for item in raw_files),
             source_mods=tuple(raw_mods),
         )
 
@@ -211,7 +211,7 @@ class InstanceSpec:
         }
 
     @classmethod
-    def from_mapping(cls, value: object) -> InstanceSpec:
+    def from_mapping(cls, *, value: object) -> InstanceSpec:
         """Parse an untrusted launch request."""
         if not isinstance(value, dict):
             raise RemoteValidationError("Instance specification must be an object.")
@@ -252,7 +252,7 @@ class InstanceSnapshot:
         }
 
     @classmethod
-    def from_mapping(cls, value: object) -> InstanceSnapshot:
+    def from_mapping(cls, *, value: object) -> InstanceSnapshot:
         """Parse one untrusted instance response."""
         if not isinstance(value, dict):
             raise RemoteValidationError("Instance snapshot must be an object.")
@@ -272,7 +272,7 @@ class InstanceSnapshot:
             raise RemoteValidationError("Instance snapshot fields are invalid.") from error
 
 
-def normalize_fingerprint(value: str) -> str:
+def normalize_fingerprint(*, value: str) -> str:
     """Normalize and validate a SHA-256 certificate fingerprint."""
     compact = value.replace(":", "").replace(" ", "").upper()
     if len(compact) != 64 or re.fullmatch(r"[0-9A-F]{64}", compact) is None:

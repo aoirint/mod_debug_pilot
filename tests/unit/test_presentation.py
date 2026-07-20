@@ -23,8 +23,8 @@ class ConfigRepositoryStub:
 
     def __init__(
         self,
-        value: PilotConfig | None = None,
         *,
+        value: PilotConfig | None = None,
         load_error: Exception | None = None,
         save_error: Exception | None = None,
     ) -> None:
@@ -39,7 +39,7 @@ class ConfigRepositoryStub:
             raise self.load_error
         return self.value
 
-    async def save(self, config: PilotConfig) -> None:
+    async def save(self, *, config: PilotConfig) -> None:
         """Save or fail the write."""
         if self.save_error is not None:
             raise self.save_error
@@ -49,7 +49,7 @@ class ConfigRepositoryStub:
 class RequestFactoryStub:
     """Deterministic request factory."""
 
-    def create(self, kind: JobKind, *, config: PilotConfig) -> JobRequest:
+    def create(self, *, kind: JobKind, config: PilotConfig) -> JobRequest:
         """Create a fixed request."""
         return JobRequest(job_id="job", kind=kind, created_at="now", config=config)
 
@@ -59,8 +59,8 @@ class ExecutorStub:
 
     def __init__(
         self,
-        outcome: JobOutcome = JobOutcome.SUCCEEDED,
         *,
+        outcome: JobOutcome = JobOutcome.SUCCEEDED,
         error: OSError | None = None,
         gate: asyncio.Event | None = None,
         ignore_cancellation: bool = False,
@@ -71,7 +71,7 @@ class ExecutorStub:
         self.gate = gate
         self.ignore_cancellation = ignore_cancellation
 
-    async def execute(self, request: JobRequest) -> JobResult:
+    async def execute(self, *, request: JobRequest) -> JobResult:
         """Wait when requested and then complete or fail."""
         if self.gate is not None:
             try:
@@ -97,9 +97,9 @@ def make_controller(
     executor: ExecutorStub | None = None,
 ) -> AppController:
     """Compose a controller from deterministic stubs."""
-    settings = SettingsService(repository or ConfigRepositoryStub())
-    jobs = JobService(executor or ExecutorStub(), request_factory=RequestFactoryStub())
-    return AppController(settings, jobs=jobs)
+    settings = SettingsService(repository=repository or ConfigRepositoryStub())
+    jobs = JobService(executor=executor or ExecutorStub(), request_factory=RequestFactoryStub())
+    return AppController(settings=settings, jobs=jobs)
 
 
 def test_initial_state_and_subscription_are_explicit() -> None:
@@ -108,7 +108,7 @@ def test_initial_state_and_subscription_are_explicit() -> None:
     controller = make_controller()
     received: list[AppState] = []
 
-    unsubscribe = controller.subscribe(received.append)
+    unsubscribe = controller.subscribe(listener=received.append)
     unsubscribe()
     unsubscribe()
 
@@ -119,14 +119,14 @@ def test_initial_state_and_subscription_are_explicit() -> None:
 
 def test_initialize_success_and_failures() -> None:
     """Loading maps saved, corrupt, and unreadable configuration truthfully."""
-    config = PilotConfig.from_mapping(valid_values())
-    success = make_controller(repository=ConfigRepositoryStub(config))
+    config = PilotConfig.from_mapping(values=valid_values())
+    success = make_controller(repository=ConfigRepositoryStub(value=config))
     io_failure = make_controller(repository=ConfigRepositoryStub(load_error=OSError()))
     invalid_failure = make_controller(
-        repository=ConfigRepositoryStub(load_error=ValidationError({"file": "bad"})),
+        repository=ConfigRepositoryStub(load_error=ValidationError(errors={"file": "bad"})),
     )
     received: list[AppState] = []
-    success.subscribe(received.append)
+    success.subscribe(listener=received.append)
 
     asyncio.run(success.initialize())
     asyncio.run(io_failure.initialize())
@@ -145,12 +145,12 @@ def test_save_settings_success_validation_and_io_failure() -> None:
     invalid = make_controller()
     io_failure = make_controller(repository=ConfigRepositoryStub(save_error=OSError()))
 
-    assert asyncio.run(success.save_settings(valid_values())) is True
+    assert asyncio.run(success.save_settings(values=valid_values())) is True
     assert success.state.phase is AppPhase.READY
     assert success.state.message == "Configuration saved."
-    assert asyncio.run(invalid.save_settings({})) is False
+    assert asyncio.run(invalid.save_settings(values={})) is False
     assert invalid.state.field_errors["game_executable"] == "This field is required."
-    assert asyncio.run(io_failure.save_settings(valid_values())) is False
+    assert asyncio.run(io_failure.save_settings(values=valid_values())) is False
     assert io_failure.state.message == "Configuration could not be saved."
 
 
@@ -164,16 +164,16 @@ def test_job_outcomes_and_runner_failure_map_to_terminal_state() -> None:
             (JobOutcome.TIMED_OUT, AppPhase.FAILED),
             (JobOutcome.CANCELED, AppPhase.CANCELED),
         ):
-            controller = make_controller(executor=ExecutorStub(outcome))
-            assert controller.start_job(JobKind.VALIDATE_ENVIRONMENT) is True
-            assert controller.start_job(JobKind.RUN_SMOKE_TEST) is False
-            assert await controller.save_settings(valid_values()) is False
+            controller = make_controller(executor=ExecutorStub(outcome=outcome))
+            assert controller.start_job(kind=JobKind.VALIDATE_ENVIRONMENT) is True
+            assert controller.start_job(kind=JobKind.RUN_SMOKE_TEST) is False
+            assert await controller.save_settings(values=valid_values()) is False
             await controller.wait_for_idle()
             assert controller.state.phase is expected
             assert controller.state.latest_result is not None
 
         failure = make_controller(executor=ExecutorStub(error=OSError()))
-        assert failure.start_job(JobKind.RUN_SMOKE_TEST) is True
+        assert failure.start_job(kind=JobKind.RUN_SMOKE_TEST) is True
         await failure.wait_for_idle()
         assert failure.state.message == "The runner could not complete the job."
 
@@ -187,7 +187,7 @@ def test_cancel_and_close_own_task_lifecycle() -> None:
         gate = asyncio.Event()
         controller = make_controller(executor=ExecutorStub(gate=gate))
         assert await controller.cancel_active() is False
-        assert controller.start_job(JobKind.RUN_SMOKE_TEST) is True
+        assert controller.start_job(kind=JobKind.RUN_SMOKE_TEST) is True
         await asyncio.sleep(0)
         assert await controller.cancel_active() is True
         assert controller.state.phase is AppPhase.CANCELED
@@ -195,8 +195,8 @@ def test_cancel_and_close_own_task_lifecycle() -> None:
         await controller.close()
         await controller.close()
         await controller.initialize()
-        assert controller.start_job(JobKind.VALIDATE_ENVIRONMENT) is False
-        assert await controller.save_settings(valid_values()) is False
+        assert controller.start_job(kind=JobKind.VALIDATE_ENVIRONMENT) is False
+        assert await controller.save_settings(values=valid_values()) is False
         assert controller.state.phase.value == "closed"
 
     asyncio.run(scenario())
@@ -210,7 +210,7 @@ def test_close_rejects_stale_completion() -> None:
         controller = make_controller(
             executor=ExecutorStub(gate=gate, ignore_cancellation=True),
         )
-        assert controller.start_job(JobKind.RUN_SMOKE_TEST) is True
+        assert controller.start_job(kind=JobKind.RUN_SMOKE_TEST) is True
         await asyncio.sleep(0)
         await controller.close()
         assert controller.state.phase is AppPhase.CLOSED
@@ -230,7 +230,7 @@ def test_close_rejects_stale_failure() -> None:
                 ignore_cancellation=True,
             ),
         )
-        assert controller.start_job(JobKind.RUN_SMOKE_TEST) is True
+        assert controller.start_job(kind=JobKind.RUN_SMOKE_TEST) is True
         await asyncio.sleep(0)
         await controller.close()
         assert controller.state.phase.value == "closed"
@@ -240,6 +240,6 @@ def test_close_rejects_stale_failure() -> None:
 
 def test_phase_for_outcome_is_exhaustive() -> None:
     """Result variants are mapped without color- or string-based inference."""
-    assert phase_for_outcome(JobOutcome.SUCCEEDED) is AppPhase.SUCCEEDED
-    assert phase_for_outcome(JobOutcome.CANCELED) is AppPhase.CANCELED
-    assert phase_for_outcome(JobOutcome.FAILED) is AppPhase.FAILED
+    assert phase_for_outcome(outcome=JobOutcome.SUCCEEDED) is AppPhase.SUCCEEDED
+    assert phase_for_outcome(outcome=JobOutcome.CANCELED) is AppPhase.CANCELED
+    assert phase_for_outcome(outcome=JobOutcome.FAILED) is AppPhase.FAILED

@@ -81,7 +81,7 @@ class AgentRuntimeConfig:
 class ProcessProbe(Protocol):
     """Detect an already-running normal game before isolation begins."""
 
-    async def image_is_running(self, image_name: str) -> bool:
+    async def image_is_running(self, *, image_name: str) -> bool:
         """Return whether Windows reports the executable image."""
         ...
 
@@ -89,7 +89,7 @@ class ProcessProbe(Protocol):
 class TasklistProcessProbe:
     """Query Windows `tasklist` without a shell or wildcard target."""
 
-    async def image_is_running(self, image_name: str) -> bool:
+    async def image_is_running(self, *, image_name: str) -> bool:
         """Match the exact first CSV field returned by tasklist."""
         process = await asyncio.create_subprocess_exec(
             "tasklist",
@@ -160,7 +160,7 @@ class SaveIsolation:
         session_id = uuid4().hex
         original_existed = self._save.exists()
         write_json_atomic(
-            self._journal,
+            path=self._journal,
             payload={
                 "schema_version": 1,
                 "session_id": session_id,
@@ -224,9 +224,9 @@ class BootstrapIsolation:
             return
         self._restore_files()
 
-    def activate(self, profile: Path) -> None:
+    def activate(self, *, profile: Path) -> None:
         """Install one bootstrap or verify compatibility with the active one."""
-        hashes = tuple(_sha256(profile / name) for name in self._NAMES)
+        hashes = tuple(_sha256(path=profile / name) for name in self._NAMES)
         if self._active:
             if hashes != self._source_hashes:
                 raise AgentRuntimeError("Active instances require identical Doorstop bootstraps.")
@@ -236,7 +236,7 @@ class BootstrapIsolation:
             raise AgentRuntimeError("A bootstrap backup already exists.")
         self._backup.mkdir(parents=True)
         write_json_atomic(
-            self._journal,
+            path=self._journal,
             payload={"schema_version": 1, "files": list(self._NAMES)},
         )
         try:
@@ -276,8 +276,8 @@ class RemoteAgentRuntime:
 
     def __init__(
         self,
-        config: AgentRuntimeConfig,
         *,
+        config: AgentRuntimeConfig,
         launcher: ProcessLauncher,
         capturer: ScreenCapturer,
         process_probe: ProcessProbe,
@@ -304,10 +304,10 @@ class RemoteAgentRuntime:
         )
 
     @classmethod
-    def system_default(cls, config: AgentRuntimeConfig) -> RemoteAgentRuntime:
+    def system_default(cls, *, config: AgentRuntimeConfig) -> RemoteAgentRuntime:
         """Create the production controlled-side adapter set."""
         return cls(
-            config,
+            config=config,
             launcher=AsyncioProcessLauncher(),
             capturer=PillowScreenCapturer(),
             process_probe=TasklistProcessProbe(),
@@ -321,17 +321,21 @@ class RemoteAgentRuntime:
             await asyncio.to_thread(self._bootstrap.recover)
             await asyncio.to_thread(self._save.recover)
 
-    async def install_profile(self, profile_id: str, *, bundle: bytes) -> str:
+    async def install_profile(self, *, profile_id: str, bundle: bytes) -> str:
         """Validate and install one immutable controller-built profile."""
         if len(bundle) > self._config.max_upload_bytes:
             raise ProfileImportError("Uploaded profile is too large.")
-        if not _safe_identifier(profile_id):
+        if not _safe_identifier(value=profile_id):
             raise ProfileImportError("Profile identifier is invalid.")
         destination = self._config.data_root / "profiles" / profile_id
-        manifest = await asyncio.to_thread(extract_bundle, bundle, destination=destination)
+        manifest = await asyncio.to_thread(
+            extract_bundle,
+            archive_bytes=bundle,
+            destination=destination,
+        )
         return manifest.profile_name
 
-    async def launch(self, spec: InstanceSpec) -> InstanceSnapshot:
+    async def launch(self, *, spec: InstanceSpec) -> InstanceSnapshot:
         """Launch one profile with isolated logs and shared protected debug saves."""
         async with self._lock:
             source = self._config.data_root / "profiles" / spec.profile_id
@@ -344,7 +348,7 @@ class RemoteAgentRuntime:
             ):
                 raise AgentRuntimeError("Debugger port is already in use by another instance.")
             if not self._has_live_instances():
-                if await self._probe.image_is_running(self._config.game_executable.name):
+                if await self._probe.image_is_running(image_name=self._config.game_executable.name):
                     raise AgentRuntimeError("Lethal Company is already running outside the agent.")
                 await asyncio.to_thread(self._save.activate)
             instance_id = uuid4().hex
@@ -354,7 +358,7 @@ class RemoteAgentRuntime:
             process: RunningProcess | None = None
             try:
                 await asyncio.to_thread(shutil.copytree, source, profile_dir)
-                await asyncio.to_thread(self._bootstrap.activate, profile_dir)
+                await asyncio.to_thread(self._bootstrap.activate, profile=profile_dir)
                 preloader = profile_dir / "BepInEx" / "core" / "BepInEx.Preloader.dll"
                 arguments = (
                     "-screen-fullscreen",
@@ -381,14 +385,14 @@ class RemoteAgentRuntime:
                     self._config.data_root / "instance-saves" / instance_id
                 )
                 process = await self._launcher.launch(
-                    self._config.game_executable,
+                    executable=self._config.game_executable,
                     arguments=arguments,
                     working_directory=self._config.game_executable.parent,
                     environment=environment,
                 )
                 if process is None:
                     raise AgentRuntimeError("Game process was not created.")
-                await self._wait_for_save_redirect(process, profile_dir=profile_dir)
+                await self._wait_for_save_redirect(process=process, profile_dir=profile_dir)
             except BaseException:
                 if process is not None:
                     await process.terminate_tree()
@@ -414,16 +418,16 @@ class RemoteAgentRuntime:
             )
             self._instances[instance_id] = instance
             self._watchers[instance_id] = asyncio.create_task(
-                self._watch_instance(instance_id),
+                self._watch_instance(instance_id=instance_id),
                 name=f"moddebugpilot-instance-{instance_id}",
             )
-            write_json_atomic(artifact_dir / "instance.json", payload=snapshot.to_mapping())
+            write_json_atomic(path=artifact_dir / "instance.json", payload=snapshot.to_mapping())
             return snapshot
 
     async def _wait_for_save_redirect(
         self,
-        process: RunningProcess,
         *,
+        process: RunningProcess,
         profile_dir: Path,
     ) -> None:
         """Fail closed unless the per-instance ES3 redirector reports ready."""
@@ -434,7 +438,7 @@ class RemoteAgentRuntime:
                 raise AgentRuntimeError("Game exited before save isolation was ready.")
             if await asyncio.to_thread(
                 _file_contains,
-                log_path,
+                path=log_path,
                 marker=_SAVE_REDIRECT_READY,
             ):
                 return
@@ -449,7 +453,7 @@ class RemoteAgentRuntime:
             await self._finalize_if_idle()
             return tuple(item.snapshot for item in self._instances.values())
 
-    async def stop(self, instance_id: str) -> InstanceSnapshot:
+    async def stop(self, *, instance_id: str) -> InstanceSnapshot:
         """Terminate exactly one tracked process tree and finalize isolation if last."""
         async with self._lock:
             instance = self._instances.get(instance_id)
@@ -458,14 +462,14 @@ class RemoteAgentRuntime:
             if instance.snapshot.status not in {InstanceStatus.STOPPED, InstanceStatus.FAILED}:
                 await instance.process.terminate_tree()
                 self._set_status(
-                    instance,
+                    instance=instance,
                     status=InstanceStatus.STOPPED,
                     message="Stopped by operator.",
                 )
             await self._finalize_if_idle()
             return instance.snapshot
 
-    async def capture(self, instance_id: str) -> Path:
+    async def capture(self, *, instance_id: str) -> Path:
         """Capture the controlled desktop into the selected instance artifacts."""
         async with self._lock:
             instance = self._instances.get(instance_id)
@@ -476,7 +480,7 @@ class RemoteAgentRuntime:
                 / "screenshots"
                 / (datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ") + ".png")
             )
-            await self._capturer.capture(destination)
+            await self._capturer.capture(destination=destination)
             return destination
 
     async def shutdown(self) -> None:
@@ -487,13 +491,13 @@ class RemoteAgentRuntime:
                     try:
                         await instance.process.terminate_tree()
                         self._set_status(
-                            instance,
+                            instance=instance,
                             status=InstanceStatus.STOPPED,
                             message="Stopped with agent.",
                         )
                     except OSError:
                         self._set_status(
-                            instance,
+                            instance=instance,
                             status=InstanceStatus.FAILED,
                             message="Process cleanup failed.",
                         )
@@ -504,12 +508,12 @@ class RemoteAgentRuntime:
         await asyncio.gather(*self._watchers.values(), return_exceptions=True)
         self._watchers.clear()
 
-    def artifact(self, instance_id: str, *, relative: str) -> Path:
+    def artifact(self, *, instance_id: str, relative: str) -> Path:
         """Resolve one regular artifact without allowing traversal."""
         instance = self._instances.get(instance_id)
         if instance is None:
             raise AgentRuntimeError("Instance was not found.")
-        target = _confined(instance.artifact_dir, relative=relative)
+        target = _confined(root=instance.artifact_dir, relative=relative)
         if not target.is_file():
             raise AgentRuntimeError("Artifact was not found.")
         return target
@@ -521,7 +525,7 @@ class RemoteAgentRuntime:
                 and instance.process.returncode is not None
             ):
                 self._set_status(
-                    instance,
+                    instance=instance,
                     status=(
                         InstanceStatus.STOPPED
                         if instance.process.returncode == 0
@@ -537,7 +541,7 @@ class RemoteAgentRuntime:
         await asyncio.to_thread(self._bootstrap.restore)
         await asyncio.to_thread(self._save.restore)
 
-    async def _watch_instance(self, instance_id: str) -> None:
+    async def _watch_instance(self, *, instance_id: str) -> None:
         """Notice natural process exit and restore the last active session."""
         try:
             while True:
@@ -562,8 +566,8 @@ class RemoteAgentRuntime:
 
     @staticmethod
     def _set_status(
-        instance: _Instance,
         *,
+        instance: _Instance,
         status: InstanceStatus,
         message: str,
     ) -> None:
@@ -580,12 +584,12 @@ class RemoteAgentRuntime:
         if log.is_file():
             shutil.copy2(log, instance.artifact_dir / "game.log")
         write_json_atomic(
-            instance.artifact_dir / "instance.json",
+            path=instance.artifact_dir / "instance.json",
             payload=instance.snapshot.to_mapping(),
         )
 
 
-def _safe_identifier(value: str) -> bool:
+def _safe_identifier(*, value: str) -> bool:
     return (
         bool(value)
         and len(value) <= 64
@@ -596,7 +600,7 @@ def _safe_identifier(value: str) -> bool:
     )
 
 
-def _confined(root: Path, *, relative: str) -> Path:
+def _confined(*, root: Path, relative: str) -> Path:
     candidate = (root / relative).resolve()
     resolved = root.resolve()
     if candidate == resolved or resolved not in candidate.parents:
@@ -604,11 +608,11 @@ def _confined(root: Path, *, relative: str) -> Path:
     return candidate
 
 
-def _sha256(path: Path) -> str:
+def _sha256(*, path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _file_contains(path: Path, *, marker: str) -> bool:
+def _file_contains(*, path: Path, marker: str) -> bool:
     if not path.is_file():
         return False
     try:

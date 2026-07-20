@@ -100,7 +100,9 @@ class AgentApiServer:
             await self._runner.cleanup()
             self._runner = None
 
-    async def _identity(self, _request: web.Request) -> web.Response:
+    async def _identity(  # keyword-only-exception: aiohttp invokes request handlers positionally.
+        self, _request: web.Request
+    ) -> web.Response:
         return web.json_response(
             {
                 "protocol_version": self.identity.protocol_version,
@@ -109,97 +111,97 @@ class AgentApiServer:
             }
         )
 
-    async def _pairing_request(self, request: web.Request) -> web.Response:
+    async def _pairing_request(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
-            payload = await _json_body(request)
+            payload = await _json_body(request=request)
             pending = self.pairing.request(
-                code=_required_string(payload, name="code"),
-                controller_id=_required_string(payload, name="controller_id"),
-                controller_name=_required_string(payload, name="controller_name"),
-                public_key_b64=_required_string(payload, name="public_key"),
+                code=_required_string(payload=payload, name="code"),
+                controller_id=_required_string(payload=payload, name="controller_id"),
+                controller_name=_required_string(payload=payload, name="controller_name"),
+                public_key_b64=_required_string(payload=payload, name="public_key"),
             )
             return web.json_response(
                 {"request_id": pending.request_id, "poll_token": pending.poll_token},
                 status=202,
             )
         except (AuthenticationError, RemoteApiError) as error:
-            return _error(str(error), status=403)
+            return _error(message=str(error), status=403)
 
-    async def _pairing_status(self, request: web.Request) -> web.Response:
+    async def _pairing_status(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             status = self.pairing.status(
-                request.match_info["request_id"],
+                request_id=request.match_info["request_id"],
                 poll_token=request.query.get("token", ""),
             )
         except AuthenticationError as error:
-            return _error(str(error), status=404)
+            return _error(message=str(error), status=404)
         value = "pending" if status is None else ("approved" if status else "rejected")
         return web.json_response({"status": value})
 
-    async def _install_profile(self, request: web.Request) -> web.Response:
+    async def _install_profile(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             body = await self._authorized_body(request)
             name = await self.runtime.install_profile(
-                request.match_info["profile_id"],
+                profile_id=request.match_info["profile_id"],
                 bundle=body,
             )
             return web.json_response({"profile_name": name}, status=201)
         except (AuthenticationError, ProfileImportError, AgentRuntimeError) as error:
-            return _error(str(error), status=_status_for(error))
+            return _error(message=str(error), status=_status_for(error=error))
 
-    async def _instances(self, request: web.Request) -> web.Response:
+    async def _instances(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             await self._authorize(request, body=b"")
             instances = await self.runtime.list_instances()
             return web.json_response({"instances": [item.to_mapping() for item in instances]})
         except (AuthenticationError, AgentRuntimeError) as error:
-            return _error(str(error), status=_status_for(error))
+            return _error(message=str(error), status=_status_for(error=error))
 
-    async def _launch(self, request: web.Request) -> web.Response:
+    async def _launch(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             body = await self._authorized_body(request)
-            spec = InstanceSpec.from_mapping(json.loads(body))
-            snapshot = await self.runtime.launch(spec)
+            spec = InstanceSpec.from_mapping(value=json.loads(body))
+            snapshot = await self.runtime.launch(spec=spec)
             return web.json_response(snapshot.to_mapping(), status=201)
         except (AuthenticationError, AgentRuntimeError, ValueError, json.JSONDecodeError) as error:
-            return _error(str(error), status=_status_for(error))
+            return _error(message=str(error), status=_status_for(error=error))
 
-    async def _stop(self, request: web.Request) -> web.Response:
+    async def _stop(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             await self._authorize(request, body=b"")
-            snapshot = await self.runtime.stop(request.match_info["instance_id"])
+            snapshot = await self.runtime.stop(instance_id=request.match_info["instance_id"])
             return web.json_response(snapshot.to_mapping())
         except (AuthenticationError, AgentRuntimeError) as error:
-            return _error(str(error), status=_status_for(error))
+            return _error(message=str(error), status=_status_for(error=error))
 
-    async def _screenshot(self, request: web.Request) -> web.Response:
+    async def _screenshot(self, request: web.Request) -> web.Response:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             await self._authorize(request, body=b"")
-            path = await self.runtime.capture(request.match_info["instance_id"])
+            path = await self.runtime.capture(instance_id=request.match_info["instance_id"])
             instance_root = path.parents[1]
             return web.json_response({"artifact": path.relative_to(instance_root).as_posix()})
         except (AuthenticationError, AgentRuntimeError) as error:
-            return _error(str(error), status=_status_for(error))
+            return _error(message=str(error), status=_status_for(error=error))
 
-    async def _artifact(self, request: web.Request) -> web.StreamResponse:
+    async def _artifact(self, request: web.Request) -> web.StreamResponse:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         try:
             await self._authorize(request, body=b"")
             path = self.runtime.artifact(
-                request.match_info["instance_id"],
+                instance_id=request.match_info["instance_id"],
                 relative=request.match_info["relative"],
             )
             if path.stat().st_size > _MAX_ARTIFACT:
                 raise AgentRuntimeError("Artifact exceeds the download limit.")
             return web.FileResponse(path)
         except (AuthenticationError, AgentRuntimeError) as error:
-            return _error(str(error), status=_status_for(error))
+            return _error(message=str(error), status=_status_for(error=error))
 
-    async def _authorized_body(self, request: web.Request) -> bytes:
+    async def _authorized_body(self, request: web.Request) -> bytes:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         body = await request.read()
         await self._authorize(request, body=body)
         return body
 
-    async def _authorize(self, request: web.Request, *, body: bytes) -> None:
+    async def _authorize(self, request: web.Request, *, body: bytes) -> None:  # noqa: PLR0917 -- keyword-only-exception: aiohttp invokes request handlers positionally.
         self.authorizations.verify(
             controller_id=request.headers.get("X-MDP-Controller", ""),
             method=request.method,
@@ -223,7 +225,7 @@ class AgentApiClient:
         timeout_seconds: float = 60.0,
     ) -> None:
         """Create a client that never falls back to CA-only trust."""
-        normalized = normalize_fingerprint(fingerprint)
+        normalized = normalize_fingerprint(value=fingerprint)
         self._base_url = base_url.rstrip("/")
         if not self._base_url.startswith("https://"):
             raise RemoteApiError("Agent address must use HTTPS.")
@@ -240,73 +242,73 @@ class AgentApiClient:
             "public_key": self._identity.public_key_b64,
         }
         response = await self._request(
-            "POST",
+            method="POST",
             path="/v1/pairing/requests",
             payload=payload,
             signed=False,
         )
-        return _required_string(response, name="request_id"), _required_string(
-            response,
+        return _required_string(payload=response, name="request_id"), _required_string(
+            payload=response,
             name="poll_token",
         )
 
-    async def pairing_status(self, request_id: str, *, poll_token: str) -> str:
+    async def pairing_status(self, *, request_id: str, poll_token: str) -> str:
         """Poll the local operator decision using the high-entropy polling secret."""
         encoded_request = quote(request_id, safe="")
         encoded_token = quote(poll_token, safe="")
         path = f"/v1/pairing/requests/{encoded_request}?token={encoded_token}"
-        response = await self._request("GET", path=path, signed=False)
-        return _required_string(response, name="status")
+        response = await self._request(method="GET", path=path, signed=False)
+        return _required_string(payload=response, name="status")
 
-    async def install_profile(self, profile_id: str, *, bundle: bytes) -> str:
+    async def install_profile(self, *, profile_id: str, bundle: bytes) -> str:
         """Upload one complete controller-built profile."""
         path = f"/v1/profiles/{quote(profile_id, safe='')}"
-        response = await self._request("POST", path=path, body=bundle, signed=True)
-        return _required_string(response, name="profile_name")
+        response = await self._request(method="POST", path=path, body=bundle, signed=True)
+        return _required_string(payload=response, name="profile_name")
 
     async def list_instances(self) -> tuple[InstanceSnapshot, ...]:
         """Fetch all remote process records."""
-        response = await self._request("GET", path="/v1/instances", signed=True)
+        response = await self._request(method="GET", path="/v1/instances", signed=True)
         values = response.get("instances")
         if not isinstance(values, list):
             raise RemoteApiError("Agent returned an invalid instance list.")
-        return tuple(InstanceSnapshot.from_mapping(item) for item in values)
+        return tuple(InstanceSnapshot.from_mapping(value=item) for item in values)
 
-    async def launch(self, spec: InstanceSpec) -> InstanceSnapshot:
+    async def launch(self, *, spec: InstanceSpec) -> InstanceSnapshot:
         """Launch one allow-listed remote instance."""
         response = await self._request(
-            "POST",
+            method="POST",
             path="/v1/instances",
             payload=spec.to_mapping(),
             signed=True,
         )
-        return InstanceSnapshot.from_mapping(response)
+        return InstanceSnapshot.from_mapping(value=response)
 
-    async def stop(self, instance_id: str) -> InstanceSnapshot:
+    async def stop(self, *, instance_id: str) -> InstanceSnapshot:
         """Stop exactly one remote tracked process tree."""
         path = f"/v1/instances/{quote(instance_id, safe='')}/stop"
-        response = await self._request("POST", path=path, signed=True)
-        return InstanceSnapshot.from_mapping(response)
+        response = await self._request(method="POST", path=path, signed=True)
+        return InstanceSnapshot.from_mapping(value=response)
 
-    async def capture(self, instance_id: str) -> str:
+    async def capture(self, *, instance_id: str) -> str:
         """Ask the agent to capture its desktop and return the artifact path."""
         path = f"/v1/instances/{quote(instance_id, safe='')}/screenshots"
-        response = await self._request("POST", path=path, signed=True)
-        return _required_string(response, name="artifact")
+        response = await self._request(method="POST", path=path, signed=True)
+        return _required_string(payload=response, name="artifact")
 
-    async def download_artifact(self, instance_id: str, *, relative: str) -> bytes:
+    async def download_artifact(self, *, instance_id: str, relative: str) -> bytes:
         """Download one authenticated artifact with a bounded response size."""
         encoded = "/".join(quote(part, safe="") for part in Path(relative).parts)
         path = f"/v1/instances/{quote(instance_id, safe='')}/artifacts/{encoded}"
-        body = await self._request_bytes("GET", path=path, signed=True)
+        body = await self._request_bytes(method="GET", path=path, signed=True)
         if len(body) > _MAX_ARTIFACT:
             raise RemoteApiError("Agent artifact exceeds the download limit.")
         return body
 
     async def _request(
         self,
-        method: str,
         *,
+        method: str,
         path: str,
         payload: Mapping[str, object] | None = None,
         body: bytes | None = None,
@@ -319,7 +321,7 @@ class AgentApiClient:
             headers["Content-Type"] = "application/json"
         resolved_body = resolved_body or b""
         response_body = await self._request_bytes(
-            method,
+            method=method,
             path=path,
             body=resolved_body,
             headers=headers,
@@ -335,8 +337,8 @@ class AgentApiClient:
 
     async def _request_bytes(
         self,
-        method: str,
         *,
+        method: str,
         path: str,
         body: bytes = b"",
         headers: dict[str, str] | None = None,
@@ -347,7 +349,7 @@ class AgentApiClient:
         if signed:
             resolved_headers.update(
                 signed_headers(
-                    self._identity,
+                    identity=self._identity,
                     method=method,
                     path=request_path,
                     body=body,
@@ -378,7 +380,7 @@ class AgentApiClient:
                 raise RemoteApiError("Secure connection to the agent failed.") from error
 
 
-async def _json_body(request: web.Request) -> dict[str, object]:
+async def _json_body(*, request: web.Request) -> dict[str, object]:
     body = await request.read()
     if len(body) > _MAX_JSON:
         raise RemoteApiError("JSON request is too large.")
@@ -391,18 +393,18 @@ async def _json_body(request: web.Request) -> dict[str, object]:
     return payload
 
 
-def _required_string(payload: dict[str, object], *, name: str) -> str:
+def _required_string(*, payload: dict[str, object], name: str) -> str:
     value = payload.get(name)
     if not isinstance(value, str) or not value:
         raise RemoteApiError(f"Missing string field: {name}.")
     return value
 
 
-def _error(message: str, *, status: int) -> web.Response:
+def _error(*, message: str, status: int) -> web.Response:
     return web.json_response({"error": message}, status=status)
 
 
-def _status_for(error: BaseException) -> int:
+def _status_for(*, error: BaseException) -> int:
     if isinstance(error, AuthenticationError):
         return 401
     if isinstance(error, (ValueError, ProfileImportError)):
@@ -410,6 +412,6 @@ def _status_for(error: BaseException) -> int:
     return 409
 
 
-def bundle_digest(bundle: bytes) -> str:
+def bundle_digest(*, bundle: bytes) -> str:
     """Return the transfer digest displayed by both sides."""
     return hashlib.sha256(bundle).hexdigest()

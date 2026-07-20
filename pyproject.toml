@@ -55,6 +55,8 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
+preview = true
+explicit-preview-rules = true
 select = [
     "E",
     "W",
@@ -79,6 +81,7 @@ select = [
     "PERF",
     "PIE",
     "PL",
+    "PLR0917",
     "PT",
     "PTH",
     "RET",
@@ -90,11 +93,15 @@ select = [
     "TRY",
     "UP",
 ]
+
 ignore = [
     "COM812", # Ruff formatter owns trailing comma layout.
     "D203",   # Select D211: no blank line before class docstrings.
     "D213",   # Select D212: summary starts on the first line.
 ]
+
+[tool.ruff.lint.pylint]
+max-positional-args = 0
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

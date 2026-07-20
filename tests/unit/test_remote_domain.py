@@ -37,7 +37,7 @@ def agent_values() -> dict[str, object]:
 
 def test_agent_settings_round_trip_and_defaults() -> None:
     """Form strings normalize to one stable non-secret JSON object."""
-    settings = AgentSettings.from_mapping(agent_values())
+    settings = AgentSettings.from_mapping(value=agent_values())
 
     assert settings.agent_name == "lab-agent"
     assert settings.api_port == _DEFAULT_API_PORT
@@ -57,10 +57,10 @@ def test_agent_settings_round_trip_and_defaults() -> None:
         {**agent_values(), "web_port": 48950},
     ],
 )
-def test_agent_settings_reject_invalid_values(mutation: object) -> None:
+def test_agent_settings_reject_invalid_values(*, mutation: object) -> None:
     """Every invalid field shape fails before effects are composed."""
     with pytest.raises(RemoteValidationError):
-        AgentSettings.from_mapping(mutation)
+        AgentSettings.from_mapping(value=mutation)
 
 
 def test_file_record_and_manifest_round_trip() -> None:
@@ -73,10 +73,10 @@ def test_file_record_and_manifest_round_trip() -> None:
         source_mods=("BepInEx-BepInExPack-5.4.2100",),
     )
 
-    parsed = BundleManifest.from_mapping(manifest.to_mapping())
+    parsed = BundleManifest.from_mapping(value=manifest.to_mapping())
 
     assert parsed == manifest
-    assert FileRecord.from_mapping(record.to_mapping()) == record
+    assert FileRecord.from_mapping(value=record.to_mapping()) == record
 
 
 def test_file_record_rejections() -> None:
@@ -94,7 +94,7 @@ def test_file_record_rejections() -> None:
             FileRecord(**fields)  # type: ignore[arg-type]
     for value in (None, {}, {"path": 1, "size": "0", "sha256": 2}):
         with pytest.raises(RemoteValidationError):
-            FileRecord.from_mapping(value)
+            FileRecord.from_mapping(value=value)
 
 
 def test_manifest_rejections() -> None:
@@ -123,13 +123,13 @@ def test_manifest_rejections() -> None:
     )
     for value in invalid_values:
         with pytest.raises(RemoteValidationError):
-            BundleManifest.from_mapping(value)
+            BundleManifest.from_mapping(value=value)
 
 
 def test_instance_spec_and_snapshot_round_trip() -> None:
     """Launch and process-state messages parse every optional field."""
     spec = InstanceSpec(name="client-1", profile_id="profile", debugger_port=55555)
-    assert InstanceSpec.from_mapping(spec.to_mapping()) == spec
+    assert InstanceSpec.from_mapping(value=spec.to_mapping()) == spec
     snapshot = InstanceSnapshot(
         instance_id="id",
         name="client-1",
@@ -138,8 +138,8 @@ def test_instance_spec_and_snapshot_round_trip() -> None:
         pid=12,
         started_at="now",
     )
-    assert InstanceSnapshot.from_mapping(snapshot.to_mapping()) == snapshot
-    assert InstanceSnapshot.from_mapping({**snapshot.to_mapping(), "pid": None}).pid is None
+    assert InstanceSnapshot.from_mapping(value=snapshot.to_mapping()) == snapshot
+    assert InstanceSnapshot.from_mapping(value={**snapshot.to_mapping(), "pid": None}).pid is None
 
 
 @pytest.mark.parametrize(
@@ -152,7 +152,7 @@ def test_instance_spec_and_snapshot_round_trip() -> None:
         {"name": "n", "profile_id": "p", "debugger_port": 80},
     ],
 )
-def test_invalid_instance_spec_fields(fields: dict[str, object]) -> None:
+def test_invalid_instance_spec_fields(*, fields: dict[str, object]) -> None:
     """Invalid dataclass construction fails immediately."""
     with pytest.raises(RemoteValidationError):
         InstanceSpec(**fields)  # type: ignore[arg-type]
@@ -162,7 +162,7 @@ def test_invalid_instance_wire_values() -> None:
     """Malformed request and response objects fail deterministically."""
     for value in (None, {}, {"name": None, "profile_id": None, "width": object()}):
         with pytest.raises(RemoteValidationError):
-            InstanceSpec.from_mapping(value)
+            InstanceSpec.from_mapping(value=value)
     for value in (
         None,
         {},
@@ -176,22 +176,22 @@ def test_invalid_instance_wire_values() -> None:
         },
     ):
         with pytest.raises(RemoteValidationError):
-            InstanceSnapshot.from_mapping(value)
+            InstanceSnapshot.from_mapping(value=value)
 
 
 def test_fingerprint_normalization() -> None:
     """Compact or colon-separated SHA-256 fingerprints normalize identically."""
     compact = "ab" * 32
     normalized = ":".join(["AB"] * 32)
-    assert normalize_fingerprint(compact) == normalized
-    assert normalize_fingerprint(normalized) == normalized
+    assert normalize_fingerprint(value=compact) == normalized
+    assert normalize_fingerprint(value=normalized) == normalized
     for value in ("", "GG" * 32, "AA" * 31):
         with pytest.raises(RemoteValidationError):
-            normalize_fingerprint(value)
+            normalize_fingerprint(value=value)
     with (
         patch(
             "mod_debug_pilot.domain.remote._FINGERPRINT", Mock(fullmatch=Mock(return_value=None))
         ),
         pytest.raises(RemoteValidationError),
     ):
-        normalize_fingerprint(compact)
+        normalize_fingerprint(value=compact)

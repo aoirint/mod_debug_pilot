@@ -12,8 +12,8 @@ from tests.unit.test_domain import valid_values
 def test_system_request_factory_uses_utc_and_safe_identifier() -> None:
     """Generated identifiers are artifact-directory safe and UTC stamped."""
     request = SystemRequestFactory().create(
-        JobKind.RUN_SMOKE_TEST,
-        config=PilotConfig.from_mapping(valid_values()),
+        kind=JobKind.RUN_SMOKE_TEST,
+        config=PilotConfig.from_mapping(values=valid_values()),
     )
 
     assert request.job_id.replace("-", "").isalnum()

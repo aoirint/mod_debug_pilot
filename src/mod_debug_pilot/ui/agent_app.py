@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -40,7 +39,7 @@ from mod_debug_pilot.ui.web_controller import WebControllerContext
 class AgentView:
     """Own the explicit listen/approve/stop lifecycle on the test workstation."""
 
-    def __init__(self, page: ft.Page, *, application_data: Path) -> None:
+    def __init__(self, page: ft.Page, *, application_data: Path) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
         """Create controls and load no secrets until the operator acts."""
         self._page = page
         self._application_data = application_data
@@ -121,7 +120,7 @@ class AgentView:
         )
         settings_controls = list(self.fields.values())
         status_card = self._card(
-            "LAN listeners",
+            title="LAN listeners",
             controls=[
                 self.passphrase,
                 ft.Text(
@@ -137,7 +136,7 @@ class AgentView:
             ],
         )
         pairing_card = self._card(
-            "Connection approval",
+            title="Connection approval",
             controls=[
                 ft.Row(
                     [
@@ -150,7 +149,7 @@ class AgentView:
             ],
         )
         instances_card = self._card(
-            "Tracked instances",
+            title="Tracked instances",
             controls=[
                 ft.OutlinedButton("Refresh instances", on_click=self._refresh_instances),
                 self.instances,
@@ -193,7 +192,7 @@ class AgentView:
         )
 
     @staticmethod
-    def _card(title: str, *, controls: list[ft.Control]) -> ft.Control:
+    def _card(*, title: str, controls: list[ft.Control]) -> ft.Control:
         return ft.Card(
             content=ft.Container(
                 padding=20,
@@ -204,23 +203,25 @@ class AgentView:
             )
         )
 
-    async def _start(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._start_services)
+    async def _start(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._start_services)
 
     async def _start_services(self) -> None:
         if self._api is not None:
             raise OSError("Listeners are already running.")
         settings = AgentSettings.from_mapping(
-            {name: field.value for name, field in self.fields.items()}
+            value={name: field.value for name, field in self.fields.items()}
         )
         passphrase = self.passphrase.value or ""
-        write_json_atomic(self._settings_path, payload=settings.to_mapping())
+        write_json_atomic(path=self._settings_path, payload=settings.to_mapping())
         identity_dir = self._application_data / "identity"
         if (identity_dir / "agent-cert.pem").exists():
-            identity = load_agent_identity(identity_dir, passphrase=passphrase)
+            identity = load_agent_identity(directory=identity_dir, passphrase=passphrase)
         else:
             identity = create_agent_identity(
-                identity_dir,
+                directory=identity_dir,
                 passphrase=passphrase,
                 common_name=settings.agent_name,
             )
@@ -230,14 +231,16 @@ class AgentView:
             artifact_root=Path(settings.artifact_root),
             save_directory=Path(settings.save_directory),
         )
-        runtime = RemoteAgentRuntime.system_default(runtime_config)
-        authorizations = AuthorizationStore(self._application_data / "approved-controllers.json")
-        pairing = PairingBroker(authorizations)
+        runtime = RemoteAgentRuntime.system_default(config=runtime_config)
+        authorizations = AuthorizationStore(
+            path=self._application_data / "approved-controllers.json"
+        )
+        pairing = PairingBroker(authorizations=authorizations)
         fetcher = ThunderstoreFetcher()
         context = WebControllerContext(
             pairing=pairing,
-            importer=ThunderstoreProfileImporter(fetcher),
-            workspace=ProfileWorkspace(fetcher),
+            importer=ThunderstoreProfileImporter(fetcher=fetcher),
+            workspace=ProfileWorkspace(fetcher=fetcher),
             runtime=runtime,
             data_root=Path(settings.data_root),
         )
@@ -251,9 +254,9 @@ class AgentView:
             pairing=pairing,
             max_upload_bytes=runtime_config.max_upload_bytes,
         )
-        controller_hosts = discover_controller_hosts(settings.bind_host)
+        controller_hosts = discover_controller_hosts(bind_host=settings.bind_host)
         web = FletWebHost(context=context, allowed_hosts=controller_hosts)
-        ssl_context = server_ssl_context(identity, passphrase=passphrase)
+        ssl_context = server_ssl_context(identity=identity, passphrase=passphrase)
         try:
             await api.start(
                 host=settings.bind_host, port=settings.api_port, ssl_context=ssl_context
@@ -269,10 +272,10 @@ class AgentView:
         self._pairing = pairing
         self._api = api
         self._web = web
-        controller_host = preferred_controller_host(controller_hosts)
+        controller_host = preferred_controller_host(hosts=controller_hosts)
         self.status.value = "Trusted-LAN HTTP controller and pinned-TLS automation API are running."
         self.controller_url.value = (
-            f"Controller URL: {controller_http_url(controller_host, port=settings.web_port)}"
+            f"Controller URL: {controller_http_url(host=controller_host, port=settings.web_port)}"
         )
         self.fingerprint.value = f"Automation API SHA-256: {identity.fingerprint}"
         self.start_button.disabled = True
@@ -281,8 +284,10 @@ class AgentView:
         for field in self.fields.values():
             field.disabled = True
 
-    async def _stop(self, _event: ft.Event[ft.Button]) -> None:
-        await self._perform(self._stop_services)
+    async def _stop(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
+        await self._perform(action=self._stop_services)
 
     async def _stop_services(self) -> None:
         if self._web is not None:
@@ -305,20 +310,24 @@ class AgentView:
         for field in self.fields.values():
             field.disabled = False
 
-    async def _open_pairing(self, _event: ft.Event[ft.Button]) -> None:
+    async def _open_pairing(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.Button]
+    ) -> None:
         if self._pairing is None:
             return
         code = self._pairing.open()
         self.pairing_code.value = f"Pairing code: {code} (valid for 10 minutes, one use)"
         self._page.update()
 
-    async def _refresh_pending(self, _event: ft.Event[ft.OutlinedButton]) -> None:
+    async def _refresh_pending(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
         if self._pairing is None:
             return
         self.pending.controls = [self._pending_row(item) for item in self._pairing.pending()]
         self._page.update()
 
-    def _pending_row(self, request: PairingRequest) -> ft.Control:
+    def _pending_row(self, request: PairingRequest) -> ft.Control:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
         return ft.Card(
             content=ft.Container(
                 padding=12,
@@ -343,12 +352,12 @@ class AgentView:
             )
         )
 
-    def _decision_handler(
+    def _decision_handler(  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
         self, request: PairingRequest, *, approve: bool
     ) -> Callable[[], Awaitable[None]]:
         async def handler() -> None:
             if self._pairing is not None:
-                self._pairing.decide(request.request_id, approve=approve)
+                self._pairing.decide(request_id=request.request_id, approve=approve)
                 self.pending.controls = [
                     self._pending_row(item) for item in self._pairing.pending()
                 ]
@@ -359,16 +368,18 @@ class AgentView:
 
         return handler
 
-    async def _refresh_instances(self, _event: ft.Event[ft.OutlinedButton]) -> None:
-        await self._perform(self._refresh_instances_action)
+    async def _refresh_instances(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
+        await self._perform(action=self._refresh_instances_action)
 
     async def _refresh_instances_action(self) -> None:
         if self._runtime is None:
             raise OSError("Start the listeners first.")
         snapshots = await self._runtime.list_instances()
-        self.instances.controls = [self._instance_row(item) for item in snapshots]
+        self.instances.controls = [self._instance_row(snapshot=item) for item in snapshots]
 
-    def _instance_row(self, snapshot: InstanceSnapshot) -> ft.Control:
+    def _instance_row(self, *, snapshot: InstanceSnapshot) -> ft.Control:
         return ft.Row(
             [
                 ft.Text(snapshot.name, expand=True),
@@ -376,25 +387,29 @@ class AgentView:
                 ft.Text(f"PID {snapshot.pid or '-'}"),
                 ft.Button(
                     "Task kill",
-                    on_click=self._kill_handler(snapshot.instance_id),
+                    on_click=self._kill_handler(instance_id=snapshot.instance_id),
                     disabled=snapshot.status is not InstanceStatus.RUNNING,
                 ),
             ]
         )
 
-    def _kill_handler(self, instance_id: str) -> Callable[[ft.Event[ft.Button]], Awaitable[None]]:
-        async def handler(_event: ft.Event[ft.Button]) -> None:
+    def _kill_handler(
+        self, *, instance_id: str
+    ) -> Callable[[ft.Event[ft.Button]], Awaitable[None]]:
+        async def handler(  # keyword-only-exception: Flet callback ABI.
+            _event: ft.Event[ft.Button],
+        ) -> None:
             async def action() -> None:
                 if self._runtime is None:
                     raise OSError("Agent runtime is not running.")
-                await self._runtime.stop(instance_id)
+                await self._runtime.stop(instance_id=instance_id)
                 await self._refresh_instances_action()
 
-            await self._perform(action)
+            await self._perform(action=action)
 
         return handler
 
-    async def _perform(self, action: Callable[[], Awaitable[None]]) -> None:
+    async def _perform(self, *, action: Callable[[], Awaitable[None]]) -> None:
         self.progress.visible = True
         self._page.update()
         try:
@@ -409,7 +424,7 @@ class AgentView:
         if self._settings_path.is_file():
             try:
                 return AgentSettings.from_mapping(
-                    json.loads(self._settings_path.read_text(encoding="utf-8"))
+                    value=json.loads(self._settings_path.read_text(encoding="utf-8"))
                 )
             except (OSError, ValueError, json.JSONDecodeError):
                 pass
@@ -422,12 +437,18 @@ class AgentView:
         )
 
 
-async def configure_agent_page(page: ft.Page, *, application_data: Path) -> None:
+async def configure_agent_page(page: ft.Page, *, application_data: Path) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
     """Configure and mount the native Agent page."""
     page.title = "ModDebugPilot Agent"
     page.theme = ft.Theme(color_scheme_seed=ft.Colors.BLUE_700, use_material3=True)
     page.padding = 0
-    view = AgentView(page, application_data=application_data)
-    page.on_close = lambda _event: asyncio.create_task(view.close())
-    page.on_disconnect = lambda _event: asyncio.create_task(view.close())
+    view = AgentView(page=page, application_data=application_data)
+
+    async def close_view(  # keyword-only-exception: Flet invokes page callbacks positionally.
+        _event: ft.Event[ft.Page],
+    ) -> None:
+        await view.close()
+
+    page.on_close = close_view
+    page.on_disconnect = close_view
     page.add(view.build())

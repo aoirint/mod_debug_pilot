@@ -14,7 +14,7 @@ class ConfigRepository(Protocol):
         """Load the configuration, returning none on first use."""
         ...
 
-    async def save(self, config: PilotConfig) -> None:
+    async def save(self, *, config: PilotConfig) -> None:
         """Persist one validated snapshot."""
         ...
 
@@ -22,7 +22,7 @@ class ConfigRepository(Protocol):
 class JobExecutor(Protocol):
     """Execute one allow-listed request."""
 
-    async def execute(self, request: JobRequest) -> JobResult:
+    async def execute(self, *, request: JobRequest) -> JobResult:
         """Run the request and return its terminal result."""
         ...
 
@@ -30,6 +30,6 @@ class JobExecutor(Protocol):
 class RequestFactory(Protocol):
     """Create uniquely identified requests using system time."""
 
-    def create(self, kind: JobKind, *, config: PilotConfig) -> JobRequest:
+    def create(self, *, kind: JobKind, config: PilotConfig) -> JobRequest:
         """Create one immutable request."""
         ...

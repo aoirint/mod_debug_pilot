@@ -48,7 +48,7 @@ def test_agent_module_execution_uses_native_main() -> None:
     launch.assert_called_once()
 
 
-def test_agent_page_entry_resolves_application_data(tmp_path: Path) -> None:
+def test_agent_page_entry_resolves_application_data(*, tmp_path: Path) -> None:
     """The thin session entry appends the Agent-owned directory exactly once."""
     configure = AsyncMock()
     with (

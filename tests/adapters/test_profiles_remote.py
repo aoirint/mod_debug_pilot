@@ -33,11 +33,13 @@ from mod_debug_pilot.infrastructure.profiles import (
 class FakeContent:
     """Yield configured HTTP response chunks."""
 
-    def __init__(self, chunks: list[bytes]) -> None:
+    def __init__(self, *, chunks: list[bytes]) -> None:
         """Store chunks."""
         self.chunks = chunks
 
-    async def iter_chunked(self, _size: int) -> AsyncIterator[bytes]:
+    async def iter_chunked(  # keyword-only-exception: aiohttp stream ABI.
+        self, _size: int
+    ) -> AsyncIterator[bytes]:
         """Yield all chunks in order."""
         for chunk in self.chunks:
             yield chunk
@@ -58,20 +60,22 @@ class FakeResponse:
         self.status = status
         self.headers = {} if location is None else {"Location": location}
         self.content_length = content_length
-        self.content = FakeContent(chunks or [])
+        self.content = FakeContent(chunks=chunks or [])
 
     async def __aenter__(self) -> FakeResponse:
         """Enter response context."""
         return self
 
-    async def __aexit__(self, *_args: object) -> None:
+    async def __aexit__(  # keyword-only-exception: aiohttp callback ABI.
+        self, *_args: object
+    ) -> None:
         """Exit response context."""
 
 
 class FakeSession:
     """Return responses in request order."""
 
-    def __init__(self, responses: list[FakeResponse]) -> None:
+    def __init__(self, *, responses: list[FakeResponse]) -> None:
         """Store responses."""
         self.responses = responses
         self.index = 0
@@ -80,10 +84,14 @@ class FakeSession:
         """Enter session context."""
         return self
 
-    async def __aexit__(self, *_args: object) -> None:
+    async def __aexit__(  # keyword-only-exception: aiohttp callback ABI.
+        self, *_args: object
+    ) -> None:
         """Exit session context."""
 
-    def get(self, _url: str, *, allow_redirects: bool) -> FakeResponse:
+    def get(  # keyword-only-exception: aiohttp request ABI.
+        self, _url: str, *, allow_redirects: bool
+    ) -> FakeResponse:
         """Return the next response with redirects disabled."""
         assert not allow_redirects
         response = self.responses[self.index]
@@ -94,18 +102,18 @@ class FakeSession:
 class FetcherStub:
     """Return exact URL fixtures and record requested limits."""
 
-    def __init__(self, responses: dict[str, bytes]) -> None:
+    def __init__(self, *, responses: dict[str, bytes]) -> None:
         """Store immutable response fixtures."""
         self.responses = responses
         self.calls: list[tuple[str, int]] = []
 
-    async def get(self, url: str, *, maximum_bytes: int) -> bytes:
+    async def get(self, *, url: str, maximum_bytes: int) -> bytes:
         """Return one configured response."""
         self.calls.append((url, maximum_bytes))
         return self.responses[url]
 
 
-def zip_bytes(entries: dict[str, bytes]) -> bytes:
+def zip_bytes(*, entries: dict[str, bytes]) -> bytes:
     """Create a small in-memory regular-file ZIP."""
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -117,20 +125,20 @@ def zip_bytes(entries: dict[str, bytes]) -> bytes:
 def test_thunderstore_fetcher_success_redirect_and_failures() -> None:
     """Network fetches constrain scheme, host, redirects, status, and both size signals."""
 
-    async def fetch(responses: list[FakeResponse], *, maximum: int = 8) -> bytes:
+    async def fetch(*, responses: list[FakeResponse], maximum: int = 8) -> bytes:
         with patch(
             "mod_debug_pilot.infrastructure.profiles.aiohttp.ClientSession",
-            return_value=FakeSession(responses),
+            return_value=FakeSession(responses=responses),
         ):
             return await ThunderstoreFetcher(timeout_seconds=1).get(
-                "https://thunderstore.io/start", maximum_bytes=maximum
+                url="https://thunderstore.io/start", maximum_bytes=maximum
             )
 
-    assert asyncio.run(fetch([FakeResponse(chunks=[b"a", b"b"])])) == b"ab"
+    assert asyncio.run(fetch(responses=[FakeResponse(chunks=[b"a", b"b"])])) == b"ab"
     assert (
         asyncio.run(
             fetch(
-                [
+                responses=[
                     FakeResponse(status=302, location="https://cdn.thunderstore.io/file"),
                     FakeResponse(chunks=[b"ok"]),
                 ]
@@ -148,7 +156,7 @@ def test_thunderstore_fetcher_success_redirect_and_failures() -> None:
         ([FakeResponse(status=302, location="https://thunderstore.io/x")] * 4, "too many"),
     ):
         with pytest.raises(ProfileImportError, match=message):
-            asyncio.run(fetch(responses))
+            asyncio.run(fetch(responses=responses))
 
 
 def test_byte_fetcher_protocol_body() -> None:
@@ -157,7 +165,7 @@ def test_byte_fetcher_protocol_body() -> None:
         asyncio.run(
             ByteFetcher.get(
                 cast(ByteFetcher, object()),
-                "https://thunderstore.io",
+                url="https://thunderstore.io",
                 maximum_bytes=1,
             )
         )
@@ -183,7 +191,7 @@ mods:
     enabled: false
 """
     return zip_bytes(
-        {
+        entries={
             "export.r2x": metadata,
             "config/com.example.Plugin.cfg": b"[General]\nEnabled = true\n",
         }
@@ -193,7 +201,7 @@ mods:
 def bepinex_package() -> bytes:
     """Create the common BepInExPack wrapper layout plus ignored metadata."""
     return zip_bytes(
-        {
+        entries={
             "BepInExPack/winhttp.dll": b"doorstop",
             "BepInExPack/doorstop_config.ini": b"[UnityDoorstop]\n",
             "BepInExPack/BepInEx/core/BepInEx.Preloader.dll": b"preloader",
@@ -226,9 +234,9 @@ def test_profile_code_import() -> None:
     code = "018d41dd-8efb-da4d-7eb6-c4d123806d64"
     url = f"https://thunderstore.io/api/experimental/legacyprofile/get/{code}/"
     payload = b"#r2modman\n" + base64.b64encode(r2z_bytes())
-    fetcher = FetcherStub({url: payload})
+    fetcher = FetcherStub(responses={url: payload})
 
-    imported = asyncio.run(ThunderstoreProfileImporter(fetcher).import_code(code))
+    imported = asyncio.run(ThunderstoreProfileImporter(fetcher=fetcher).import_code(code=code))
 
     assert imported.profile_name == "Imported"
     assert [mod.enabled for mod in imported.mods] == [True, False]
@@ -244,19 +252,23 @@ def test_profile_code_import() -> None:
         ("018d41dd-8efb-da4d-7eb6-c4d123806d64", b"#r2modman\n%%%"),
     ],
 )
-def test_profile_code_rejections(code: str, payload: bytes) -> None:
+def test_profile_code_rejections(*, code: str, payload: bytes) -> None:
     """Malformed codes, prefixes, and Base64 never reach ZIP extraction."""
     url = f"https://thunderstore.io/api/experimental/legacyprofile/get/{code}/"
     with pytest.raises(ProfileImportError):
-        asyncio.run(ThunderstoreProfileImporter(FetcherStub({url: payload})).import_code(code))
+        asyncio.run(
+            ThunderstoreProfileImporter(fetcher=FetcherStub(responses={url: payload})).import_code(
+                code=code
+            )
+        )
 
 
-def test_workspace_materialize_edit_bundle_and_extract(tmp_path: Path) -> None:
+def test_workspace_materialize_edit_bundle_and_extract(*, tmp_path: Path) -> None:
     """Controller builds a complete profile and Agent re-verifies every file."""
     mod = ThunderstoreMod(dependency="BepInEx-BepInExPack-5.4.2100", enabled=True)
     disabled = ThunderstoreMod(dependency="Author-Disabled-1.0.0", enabled=False)
-    fetcher = FetcherStub({mod.download_url: bepinex_package()})
-    workspace = ProfileWorkspace(fetcher)
+    fetcher = FetcherStub(responses={mod.download_url: bepinex_package()})
+    workspace = ProfileWorkspace(fetcher=fetcher)
     imported = ImportedProfile(
         profile_name="Imported",
         mods=(mod, disabled),
@@ -266,7 +278,7 @@ def test_workspace_materialize_edit_bundle_and_extract(tmp_path: Path) -> None:
     local_mod.write_bytes(b"local")
     profile = tmp_path / "draft"
 
-    asyncio.run(workspace.materialize(imported, destination=profile, local_mod=local_mod))
+    asyncio.run(workspace.materialize(imported=imported, destination=profile, local_mod=local_mod))
 
     assert (profile / "winhttp.dll").read_bytes() == b"doorstop"
     assert (profile / "BepInEx/plugins/ModDebugPilotLocal/Local.dll").is_file()
@@ -274,55 +286,57 @@ def test_workspace_materialize_edit_bundle_and_extract(tmp_path: Path) -> None:
         profile / "BepInEx/plugins/ModDebugPilotSafety/ModDebugPilot.SaveRedirector.dll"
     ).is_file()
     assert len(fetcher.calls) == 1
-    configs = workspace.config_files(profile)
+    configs = workspace.config_files(profile=profile)
     assert [path.name for path in configs] == ["com.example.cfg"]
-    assert workspace.read_config(profile, relative="com.example.cfg") == "Enabled = true\n"
+    assert workspace.read_config(profile=profile, relative="com.example.cfg") == "Enabled = true\n"
     workspace.write_config(
-        profile,
+        profile=profile,
         relative="com.example.cfg",
         content="Enabled = false\n",
     )
-    assert workspace.read_config(profile, relative="com.example.cfg") == "Enabled = false\n"
+    assert workspace.read_config(profile=profile, relative="com.example.cfg") == "Enabled = false\n"
 
     bundle = tmp_path / "profile.mdp-profile"
     manifest = workspace.create_bundle(
-        profile,
+        profile=profile,
         profile_name="debug-profile",
         source_mods=(mod.dependency,),
         destination=bundle,
     )
     extracted = tmp_path / "installed"
-    parsed = extract_bundle(bundle.read_bytes(), destination=extracted)
+    parsed = extract_bundle(archive_bytes=bundle.read_bytes(), destination=extracted)
     assert parsed == manifest
     assert (extracted / "BepInEx/config/com.example.cfg").read_text() == "Enabled = false\n"
 
 
-def test_workspace_rejections_and_cleanup(tmp_path: Path) -> None:
+def test_workspace_rejections_and_cleanup(*, tmp_path: Path) -> None:
     """Bad destinations, DLLs, packages, profiles, and config paths fail closed."""
-    workspace = ProfileWorkspace(FetcherStub({}))
+    workspace = ProfileWorkspace(fetcher=FetcherStub(responses={}))
     imported = ImportedProfile(profile_name="x", mods=(), config_files=())
     existing = tmp_path / "existing"
     existing.mkdir()
     dll = tmp_path / "mod.dll"
     dll.write_bytes(b"x")
     with pytest.raises(ProfileImportError):
-        asyncio.run(workspace.materialize(imported, destination=existing, local_mod=dll))
+        asyncio.run(workspace.materialize(imported=imported, destination=existing, local_mod=dll))
     with pytest.raises(ProfileImportError):
         asyncio.run(
             workspace.materialize(
-                imported,
+                imported=imported,
                 destination=tmp_path / "bad",
                 local_mod=tmp_path / "not-dll.txt",
             )
         )
     destination = tmp_path / "incomplete"
     with pytest.raises(ProfileImportError):
-        asyncio.run(workspace.materialize(imported, destination=destination, local_mod=dll))
+        asyncio.run(
+            workspace.materialize(imported=imported, destination=destination, local_mod=dll)
+        )
     assert not destination.exists()
-    assert workspace.config_files(tmp_path / "missing") == ()
+    assert workspace.config_files(profile=tmp_path / "missing") == ()
 
 
-def test_config_editor_rejections(tmp_path: Path) -> None:
+def test_config_editor_rejections(*, tmp_path: Path) -> None:
     """Editor is UTF-8, existing-file-only, traversal-safe, and size-bounded."""
     profile = tmp_path / "profile"
     config = profile / "BepInEx/config/a.cfg"
@@ -330,31 +344,31 @@ def test_config_editor_rejections(tmp_path: Path) -> None:
     config.write_text("x", encoding="utf-8")
     for relative in ("../escape.cfg", "C:\\escape.cfg"):
         with pytest.raises(ProfileImportError):
-            ProfileWorkspace.read_config(profile, relative=relative)
+            ProfileWorkspace.read_config(profile=profile, relative=relative)
     with pytest.raises(ProfileImportError):
-        ProfileWorkspace.write_config(profile, relative="missing.cfg", content="x")
+        ProfileWorkspace.write_config(profile=profile, relative="missing.cfg", content="x")
     with pytest.raises(ProfileImportError):
         ProfileWorkspace.write_config(
-            profile,
+            profile=profile,
             relative="a.cfg",
             content="x" * (2 * 1024 * 1024 + 1),
         )
     config.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
     with pytest.raises(ProfileImportError):
-        ProfileWorkspace.read_config(profile, relative="a.cfg")
+        ProfileWorkspace.read_config(profile=profile, relative="a.cfg")
 
 
-def test_bundle_manifest_and_entry_rejections(tmp_path: Path) -> None:
+def test_bundle_manifest_and_entry_rejections(*, tmp_path: Path) -> None:
     """Missing, extra, mismatched, duplicate, and unsafe bundle entries are rejected."""
     destination = tmp_path / "installed"
     destination.mkdir()
     with pytest.raises(ProfileImportError, match="already"):
-        extract_bundle(b"x", destination=destination)
+        extract_bundle(archive_bytes=b"x", destination=destination)
     destination.rmdir()
     with pytest.raises(ProfileImportError):
-        extract_bundle(b"not zip", destination=destination)
+        extract_bundle(archive_bytes=b"not zip", destination=destination)
     with pytest.raises(ProfileImportError):
-        extract_bundle(zip_bytes({"x": b"x"}), destination=destination)
+        extract_bundle(archive_bytes=zip_bytes(entries={"x": b"x"}), destination=destination)
 
     manifest = {
         "schema_version": 1,
@@ -368,14 +382,16 @@ def test_bundle_manifest_and_entry_rejections(tmp_path: Path) -> None:
         {"manifest.json": json.dumps(manifest).encode(), "profile/x": b"x", "profile/y": b"y"},
     ):
         with pytest.raises(ProfileImportError):
-            extract_bundle(zip_bytes(entries), destination=destination)
-    wrong = zip_bytes({"manifest.json": json.dumps(manifest).encode(), "profile/x": b"x"})
+            extract_bundle(archive_bytes=zip_bytes(entries=entries), destination=destination)
+    wrong = zip_bytes(entries={"manifest.json": json.dumps(manifest).encode(), "profile/x": b"x"})
     with pytest.raises(ProfileImportError, match="digest"):
-        extract_bundle(wrong, destination=destination)
+        extract_bundle(archive_bytes=wrong, destination=destination)
     size_manifest = {**manifest, "files": [{"path": "x", "size": 2, "sha256": "a" * 64}]}
     with pytest.raises(ProfileImportError, match="size"):
         extract_bundle(
-            zip_bytes({"manifest.json": json.dumps(size_manifest).encode(), "profile/x": b"x"}),
+            archive_bytes=zip_bytes(
+                entries={"manifest.json": json.dumps(size_manifest).encode(), "profile/x": b"x"}
+            ),
             destination=destination,
         )
     with (
@@ -383,8 +399,8 @@ def test_bundle_manifest_and_entry_rejections(tmp_path: Path) -> None:
         pytest.raises(ProfileImportError, match="too many"),
     ):
         extract_bundle(
-            zip_bytes(
-                {
+            archive_bytes=zip_bytes(
+                entries={
                     "manifest.json": json.dumps({**manifest, "files": []}).encode(),
                     "extra": b"x",
                 }
@@ -395,7 +411,7 @@ def test_bundle_manifest_and_entry_rejections(tmp_path: Path) -> None:
         patch("mod_debug_pilot.infrastructure.profiles._MAX_EXPANDED_PROFILE", 0),
         pytest.raises(ProfileImportError, match="too large"),
     ):
-        extract_bundle(wrong, destination=destination)
+        extract_bundle(archive_bytes=wrong, destination=destination)
 
 
 def test_r2z_metadata_rejections() -> None:
@@ -410,17 +426,19 @@ def test_r2z_metadata_rejections() -> None:
     ]
     code = "018d41dd-8efb-da4d-7eb6-c4d123806d64"
 
-    async def run(metadata: bytes) -> None:
-        payload = b"#r2modman\n" + base64.b64encode(zip_bytes({"export.r2x": metadata}))
+    async def run(*, metadata: bytes) -> None:
+        payload = b"#r2modman\n" + base64.b64encode(zip_bytes(entries={"export.r2x": metadata}))
         url = f"https://thunderstore.io/api/experimental/legacyprofile/get/{code}/"
         with pytest.raises(ProfileImportError):
-            await ThunderstoreProfileImporter(FetcherStub({url: payload})).import_code(code)
+            await ThunderstoreProfileImporter(
+                fetcher=FetcherStub(responses={url: payload})
+            ).import_code(code=code)
 
     for metadata in bad_metadata:
-        asyncio.run(run(metadata))
+        asyncio.run(run(metadata=metadata))
 
 
-def test_zip_symlink_is_rejected(tmp_path: Path) -> None:
+def test_zip_symlink_is_rejected(*, tmp_path: Path) -> None:
     """Unix link metadata cannot masquerade as a regular file."""
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
@@ -433,35 +451,39 @@ def test_zip_symlink_is_rejected(tmp_path: Path) -> None:
     payload = b"#r2modman\n" + base64.b64encode(stream.getvalue())
 
     with pytest.raises(ProfileImportError, match="unsafe"):
-        asyncio.run(ThunderstoreProfileImporter(FetcherStub({url: payload})).import_code(code))
+        asyncio.run(
+            ThunderstoreProfileImporter(fetcher=FetcherStub(responses={url: payload})).import_code(
+                code=code
+            )
+        )
     assert not tmp_path.joinpath("target").exists()
 
 
-def test_package_layout_and_archive_edge_cases(tmp_path: Path) -> None:
+def test_package_layout_and_archive_edge_cases(*, tmp_path: Path) -> None:
     """Package mapping handles directories, root DLLs, ignored metadata, and malformed ZIPs."""
     destination = tmp_path / "profile"
     package = zip_bytes(
-        {
+        entries={
             "BepInExPack/": b"",
             "BepInExPack/.doorstop_version": b"1",
             "Root.dll": b"root",
             "README.md": b"ignored",
         }
     )
-    _install_package(package, destination=destination, package_name="Author Bad/Name")
+    _install_package(package=package, destination=destination, package_name="Author Bad/Name")
     assert (destination / ".doorstop_version").is_file()
     assert (destination / "BepInEx/plugins/Author_Bad_Name/Root.dll").is_file()
-    assert _package_target("BepInExPack", package_name="x") is None
-    assert _package_target("docs/readme.md", package_name="x") is None
+    assert _package_target(name="BepInExPack", package_name="x") is None
+    assert _package_target(name="docs/readme.md", package_name="x") is None
     with pytest.raises(ProfileImportError, match="ZIP"):
-        _install_package(b"bad", destination=destination, package_name="x")
+        _install_package(package=b"bad", destination=destination, package_name="x")
     with (
         patch("mod_debug_pilot.infrastructure.profiles._MAX_FILE_COUNT", 0),
         pytest.raises(ProfileImportError, match="too many"),
     ):
-        _install_package(package, destination=destination, package_name="x")
+        _install_package(package=package, destination=destination, package_name="x")
     with pytest.raises(ProfileImportError):
-        _confined_target(destination, relative="")
+        _confined_target(root=destination, relative="")
 
 
 def test_r2z_archive_limit_and_missing_metadata() -> None:
@@ -469,14 +491,18 @@ def test_r2z_archive_limit_and_missing_metadata() -> None:
     code = "018d41dd-8efb-da4d-7eb6-c4d123806d64"
     url = f"https://thunderstore.io/api/experimental/legacyprofile/get/{code}/"
 
-    def import_archive(archive: bytes) -> None:
+    def import_archive(*, archive: bytes) -> None:
         payload = b"#r2modman\n" + base64.b64encode(archive)
-        asyncio.run(ThunderstoreProfileImporter(FetcherStub({url: payload})).import_code(code))
+        asyncio.run(
+            ThunderstoreProfileImporter(fetcher=FetcherStub(responses={url: payload})).import_code(
+                code=code
+            )
+        )
 
     with pytest.raises(ProfileImportError, match="invalid"):
-        import_archive(zip_bytes({}))
+        import_archive(archive=zip_bytes(entries={}))
     with (
         patch("mod_debug_pilot.infrastructure.profiles._MAX_FILE_COUNT", 0),
         pytest.raises(ProfileImportError, match="too many"),
     ):
-        import_archive(zip_bytes({"export.r2x": b"profileName: x\nmods: []\n"}))
+        import_archive(archive=zip_bytes(entries={"export.r2x": b"profileName: x\nmods: []\n"}))
