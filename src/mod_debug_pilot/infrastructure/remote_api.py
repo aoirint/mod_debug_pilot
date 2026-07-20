@@ -113,10 +113,10 @@ class AgentApiServer:
         try:
             payload = await _json_body(request)
             pending = self.pairing.request(
-                code=_required_string(payload, "code"),
-                controller_id=_required_string(payload, "controller_id"),
-                controller_name=_required_string(payload, "controller_name"),
-                public_key_b64=_required_string(payload, "public_key"),
+                code=_required_string(payload, name="code"),
+                controller_id=_required_string(payload, name="controller_id"),
+                controller_name=_required_string(payload, name="controller_name"),
+                public_key_b64=_required_string(payload, name="public_key"),
             )
             return web.json_response(
                 {"request_id": pending.request_id, "poll_token": pending.poll_token},
@@ -139,7 +139,10 @@ class AgentApiServer:
     async def _install_profile(self, request: web.Request) -> web.Response:
         try:
             body = await self._authorized_body(request)
-            name = await self.runtime.install_profile(request.match_info["profile_id"], body)
+            name = await self.runtime.install_profile(
+                request.match_info["profile_id"],
+                bundle=body,
+            )
             return web.json_response({"profile_name": name}, status=201)
         except (AuthenticationError, ProfileImportError, AgentRuntimeError) as error:
             return _error(str(error), status=_status_for(error))
@@ -183,7 +186,7 @@ class AgentApiServer:
             await self._authorize(request, body=b"")
             path = self.runtime.artifact(
                 request.match_info["instance_id"],
-                request.match_info["relative"],
+                relative=request.match_info["relative"],
             )
             if path.stat().st_size > _MAX_ARTIFACT:
                 raise AgentRuntimeError("Artifact exceeds the download limit.")
@@ -238,29 +241,32 @@ class AgentApiClient:
         }
         response = await self._request(
             "POST",
-            "/v1/pairing/requests",
+            path="/v1/pairing/requests",
             payload=payload,
             signed=False,
         )
-        return _required_string(response, "request_id"), _required_string(response, "poll_token")
+        return _required_string(response, name="request_id"), _required_string(
+            response,
+            name="poll_token",
+        )
 
     async def pairing_status(self, request_id: str, *, poll_token: str) -> str:
         """Poll the local operator decision using the high-entropy polling secret."""
         encoded_request = quote(request_id, safe="")
         encoded_token = quote(poll_token, safe="")
         path = f"/v1/pairing/requests/{encoded_request}?token={encoded_token}"
-        response = await self._request("GET", path, signed=False)
-        return _required_string(response, "status")
+        response = await self._request("GET", path=path, signed=False)
+        return _required_string(response, name="status")
 
-    async def install_profile(self, profile_id: str, bundle: bytes) -> str:
+    async def install_profile(self, profile_id: str, *, bundle: bytes) -> str:
         """Upload one complete controller-built profile."""
         path = f"/v1/profiles/{quote(profile_id, safe='')}"
-        response = await self._request("POST", path, body=bundle, signed=True)
-        return _required_string(response, "profile_name")
+        response = await self._request("POST", path=path, body=bundle, signed=True)
+        return _required_string(response, name="profile_name")
 
     async def list_instances(self) -> tuple[InstanceSnapshot, ...]:
         """Fetch all remote process records."""
-        response = await self._request("GET", "/v1/instances", signed=True)
+        response = await self._request("GET", path="/v1/instances", signed=True)
         values = response.get("instances")
         if not isinstance(values, list):
             raise RemoteApiError("Agent returned an invalid instance list.")
@@ -270,7 +276,7 @@ class AgentApiClient:
         """Launch one allow-listed remote instance."""
         response = await self._request(
             "POST",
-            "/v1/instances",
+            path="/v1/instances",
             payload=spec.to_mapping(),
             signed=True,
         )
@@ -279,20 +285,20 @@ class AgentApiClient:
     async def stop(self, instance_id: str) -> InstanceSnapshot:
         """Stop exactly one remote tracked process tree."""
         path = f"/v1/instances/{quote(instance_id, safe='')}/stop"
-        response = await self._request("POST", path, signed=True)
+        response = await self._request("POST", path=path, signed=True)
         return InstanceSnapshot.from_mapping(response)
 
     async def capture(self, instance_id: str) -> str:
         """Ask the agent to capture its desktop and return the artifact path."""
         path = f"/v1/instances/{quote(instance_id, safe='')}/screenshots"
-        response = await self._request("POST", path, signed=True)
-        return _required_string(response, "artifact")
+        response = await self._request("POST", path=path, signed=True)
+        return _required_string(response, name="artifact")
 
-    async def download_artifact(self, instance_id: str, relative: str) -> bytes:
+    async def download_artifact(self, instance_id: str, *, relative: str) -> bytes:
         """Download one authenticated artifact with a bounded response size."""
         encoded = "/".join(quote(part, safe="") for part in Path(relative).parts)
         path = f"/v1/instances/{quote(instance_id, safe='')}/artifacts/{encoded}"
-        body = await self._request_bytes("GET", path, signed=True)
+        body = await self._request_bytes("GET", path=path, signed=True)
         if len(body) > _MAX_ARTIFACT:
             raise RemoteApiError("Agent artifact exceeds the download limit.")
         return body
@@ -300,8 +306,8 @@ class AgentApiClient:
     async def _request(
         self,
         method: str,
-        path: str,
         *,
+        path: str,
         payload: Mapping[str, object] | None = None,
         body: bytes | None = None,
         signed: bool,
@@ -314,7 +320,7 @@ class AgentApiClient:
         resolved_body = resolved_body or b""
         response_body = await self._request_bytes(
             method,
-            path,
+            path=path,
             body=resolved_body,
             headers=headers,
             signed=signed,
@@ -330,8 +336,8 @@ class AgentApiClient:
     async def _request_bytes(
         self,
         method: str,
-        path: str,
         *,
+        path: str,
         body: bytes = b"",
         headers: dict[str, str] | None = None,
         signed: bool,
@@ -385,7 +391,7 @@ async def _json_body(request: web.Request) -> dict[str, object]:
     return payload
 
 
-def _required_string(payload: dict[str, object], name: str) -> str:
+def _required_string(payload: dict[str, object], *, name: str) -> str:
     value = payload.get(name)
     if not isinstance(value, str) or not value:
         raise RemoteApiError(f"Missing string field: {name}.")

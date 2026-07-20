@@ -23,6 +23,7 @@ from mod_debug_pilot.infrastructure.settings import write_json_atomic
 
 _CLOCK_SKEW_SECONDS: Final = 90
 _NONCE_LIFETIME_SECONDS: Final = 300
+_PAIRING_ATTEMPTS: Final = 5
 
 
 class IdentityError(ValueError):
@@ -87,6 +88,7 @@ class PairingRequest:
     public_key_b64: str
     poll_token: str
     created_at: float
+    persist_authorization: bool
     approved: bool | None = None
 
 
@@ -352,13 +354,15 @@ class PairingBroker:
         self._authorizations = authorizations
         self._code: str | None = None
         self._expires_at = 0.0
+        self._attempts_remaining = 0
         self._requests: dict[str, PairingRequest] = {}
 
     def open(self, *, now: float | None = None) -> str:
-        """Open a ten-minute pairing window and return a six-digit code."""
+        """Open a ten-minute pairing window and return an eight-digit code."""
         resolved_now = time() if now is None else now
-        self._code = f"{secrets.randbelow(1_000_000):06d}"
+        self._code = f"{secrets.randbelow(100_000_000):08d}"
         self._expires_at = resolved_now + 600
+        self._attempts_remaining = _PAIRING_ATTEMPTS
         return self._code
 
     def request(
@@ -368,16 +372,21 @@ class PairingBroker:
         controller_id: str,
         controller_name: str,
         public_key_b64: str,
+        persist_authorization: bool = True,
         now: float | None = None,
     ) -> PairingRequest:
         """Create a pending request after validating the one-time code."""
         resolved_now = time() if now is None else now
-        if (
-            self._code is None
-            or resolved_now > self._expires_at
-            or not secrets.compare_digest(code, self._code)
-        ):
+        if self._code is None or resolved_now > self._expires_at:
             raise AuthenticationError("Pairing code is invalid or expired.")
+        if not secrets.compare_digest(code, self._code):
+            self._attempts_remaining -= 1
+            if self._attempts_remaining <= 0:
+                self._code = None
+            raise AuthenticationError("Pairing code is invalid or expired.")
+        # A correctly presented code is one-use even when the remaining payload is malformed.
+        self._code = None
+        self._attempts_remaining = 0
         _decode_public_key(public_key_b64)
         expected_id = hashlib.sha256(base64.b64decode(public_key_b64)).hexdigest()[:32]
         if controller_id != expected_id:
@@ -389,9 +398,9 @@ class PairingBroker:
             public_key_b64=public_key_b64,
             poll_token=secrets.token_urlsafe(32),
             created_at=resolved_now,
+            persist_authorization=persist_authorization,
         )
         self._requests[request.request_id] = request
-        self._code = None
         return request
 
     def pending(self) -> tuple[PairingRequest, ...]:
@@ -410,10 +419,11 @@ class PairingBroker:
             public_key_b64=request.public_key_b64,
             poll_token=request.poll_token,
             created_at=request.created_at,
+            persist_authorization=request.persist_authorization,
             approved=approve,
         )
         self._requests[request_id] = decided
-        if approve:
+        if approve and request.persist_authorization:
             self._authorizations.approve(
                 controller_id=request.controller_id,
                 name=request.controller_name,

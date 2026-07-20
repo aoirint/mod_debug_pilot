@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -29,7 +28,12 @@ from mod_debug_pilot.infrastructure.security import (
     server_ssl_context,
 )
 from mod_debug_pilot.infrastructure.settings import write_json_atomic
-from mod_debug_pilot.infrastructure.web_host import FletWebHost
+from mod_debug_pilot.infrastructure.web_host import (
+    FletWebHost,
+    controller_http_url,
+    discover_controller_hosts,
+    preferred_controller_host,
+)
 from mod_debug_pilot.ui.web_controller import WebControllerContext
 
 
@@ -62,18 +66,20 @@ class AgentView:
             ),
         }
         self.passphrase = ft.TextField(
-            label="Agent identity passphrase (not saved)",
+            label="Automation API TLS passphrase (not saved)",
             password=True,
             can_reveal_password=True,
         )
         self.status = ft.Text("Listener stopped.", selectable=True)
-        self.fingerprint = ft.Text("Certificate fingerprint: not loaded", selectable=True)
+        self.fingerprint = ft.Text(
+            "Automation API certificate fingerprint: not loaded", selectable=True
+        )
         self.controller_url = ft.Text("Controller URL: listener stopped", selectable=True)
         self.pairing_code = ft.Text("Pairing code: closed", selectable=True, size=20)
         self.pending = ft.Column(spacing=8)
         self.instances = ft.Column(spacing=8)
         self.progress = ft.ProgressRing(width=20, height=20, visible=False)
-        self.start_button = ft.Button("Start secure listeners", on_click=self._start)
+        self.start_button = ft.Button("Start LAN listeners", on_click=self._start)
         self.stop_button = ft.Button("Stop and restore", on_click=self._stop, disabled=True)
         self.open_pairing_button = ft.Button(
             "Open pairing window", on_click=self._open_pairing, disabled=True
@@ -115,9 +121,15 @@ class AgentView:
         )
         settings_controls = list(self.fields.values())
         status_card = self._card(
-            "Secure listener",
-            [
+            "LAN listeners",
+            controls=[
                 self.passphrase,
+                ft.Text(
+                    "The browser UI uses plain HTTP for trusted private LANs. "
+                    "Traffic is not confidential; restrict the port with Windows Firewall.",
+                    color=ft.Colors.AMBER_800,
+                    weight=ft.FontWeight.BOLD,
+                ),
                 ft.Row([self.start_button, self.stop_button, self.progress]),
                 self.status,
                 self.controller_url,
@@ -126,7 +138,7 @@ class AgentView:
         )
         pairing_card = self._card(
             "Connection approval",
-            [
+            controls=[
                 ft.Row(
                     [
                         self.open_pairing_button,
@@ -139,7 +151,7 @@ class AgentView:
         )
         instances_card = self._card(
             "Tracked instances",
-            [
+            controls=[
                 ft.OutlinedButton("Refresh instances", on_click=self._refresh_instances),
                 self.instances,
             ],
@@ -181,7 +193,7 @@ class AgentView:
         )
 
     @staticmethod
-    def _card(title: str, controls: list[ft.Control]) -> ft.Control:
+    def _card(title: str, *, controls: list[ft.Control]) -> ft.Control:
         return ft.Card(
             content=ft.Container(
                 padding=20,
@@ -239,12 +251,8 @@ class AgentView:
             pairing=pairing,
             max_upload_bytes=runtime_config.max_upload_bytes,
         )
-        web = FletWebHost(
-            context=context,
-            certificate_path=identity.certificate_path,
-            private_key_path=identity.private_key_path,
-            passphrase=passphrase,
-        )
+        controller_hosts = discover_controller_hosts(settings.bind_host)
+        web = FletWebHost(context=context, allowed_hosts=controller_hosts)
         ssl_context = server_ssl_context(identity, passphrase=passphrase)
         try:
             await api.start(
@@ -261,10 +269,12 @@ class AgentView:
         self._pairing = pairing
         self._api = api
         self._web = web
-        host = socket.gethostname()
-        self.status.value = "Secure listeners are running. Compare the fingerprint before pairing."
-        self.controller_url.value = f"Controller URL: https://{host}:{settings.web_port}/controller"
-        self.fingerprint.value = f"SHA-256: {identity.fingerprint}"
+        controller_host = preferred_controller_host(controller_hosts)
+        self.status.value = "Trusted-LAN HTTP controller and pinned-TLS automation API are running."
+        self.controller_url.value = (
+            f"Controller URL: {controller_http_url(controller_host, port=settings.web_port)}"
+        )
+        self.fingerprint.value = f"Automation API SHA-256: {identity.fingerprint}"
         self.start_button.disabled = True
         self.stop_button.disabled = False
         self.open_pairing_button.disabled = False

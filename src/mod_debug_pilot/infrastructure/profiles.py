@@ -191,7 +191,7 @@ class ProfileWorkspace:
                 )
             config_root = destination / "BepInEx" / "config"
             for relative, content in imported.config_files:
-                target = _confined_target(config_root, relative)
+                target = _confined_target(config_root, relative=relative)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
             local_dir = destination / "BepInEx" / "plugins" / "ModDebugPilotLocal"
@@ -226,20 +226,20 @@ class ProfileWorkspace:
         )
 
     @staticmethod
-    def read_config(profile: Path, relative: str) -> str:
+    def read_config(profile: Path, *, relative: str) -> str:
         """Read one bounded UTF-8 config file for editing."""
-        target = _confined_target(profile / "BepInEx" / "config", relative)
+        target = _confined_target(profile / "BepInEx" / "config", relative=relative)
         if target.stat().st_size > 2 * 1024 * 1024:
             raise ProfileImportError("Configuration file is too large to edit.")
         return target.read_text(encoding="utf-8")
 
     @staticmethod
-    def write_config(profile: Path, relative: str, content: str) -> None:
+    def write_config(profile: Path, *, relative: str, content: str) -> None:
         """Atomically replace one existing UTF-8 config file."""
         encoded = content.encode("utf-8")
         if len(encoded) > 2 * 1024 * 1024:
             raise ProfileImportError("Configuration file is too large to edit.")
-        target = _confined_target(profile / "BepInEx" / "config", relative)
+        target = _confined_target(profile / "BepInEx" / "config", relative=relative)
         if not target.is_file():
             raise ProfileImportError("Configuration file does not exist.")
         temporary = target.with_suffix(target.suffix + ".tmp")
@@ -317,7 +317,7 @@ def _extract_open_bundle(archive: zipfile.ZipFile, *, destination: Path) -> Bund
             content = archive.read(info)
             if hashlib.sha256(content).hexdigest() != record.sha256:
                 raise ProfileImportError("Profile bundle file digest does not match.")
-            target = _confined_target(destination, record.path)
+            target = _confined_target(destination, relative=record.path)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
         _validate_materialized_profile(destination)
@@ -385,7 +385,7 @@ def _install_package(package: bytes, *, destination: Path, package_name: str) ->
                 relative = _package_target(info.filename, package_name=package_name)
                 if relative is None:
                     continue
-                target = _confined_target(destination, relative)
+                target = _confined_target(destination, relative=relative)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(archive.read(info))
     except zipfile.BadZipFile as error:
@@ -423,7 +423,7 @@ def _validate_zip_info(info: zipfile.ZipInfo) -> None:
         raise ProfileImportError("Archive contains an unsafe entry.")
 
 
-def _confined_target(root: Path, relative: str) -> Path:
+def _confined_target(root: Path, *, relative: str) -> Path:
     pure = PurePosixPath(relative)
     if pure.is_absolute() or ".." in pure.parts or "\\" in relative:
         raise ProfileImportError("Path escapes its profile root.")

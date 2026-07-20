@@ -123,7 +123,7 @@ class WebControllerView:
                                 weight=ft.FontWeight.BOLD,
                             ),
                             ft.Text(
-                                "Agent-hosted secure browser session",
+                                "Agent-hosted trusted-LAN HTTP session",
                                 color=ft.Colors.BLUE_GREY_200,
                             ),
                         ],
@@ -134,9 +134,22 @@ class WebControllerView:
         )
         content = ft.Column(
             controls=[
+                ft.Card(
+                    bgcolor=ft.Colors.AMBER_50,
+                    content=ft.Container(
+                        padding=16,
+                        content=ft.Text(
+                            "HTTP removes certificate setup, but it does not encrypt this "
+                            "browser session. Use only on a private trusted LAN and keep the "
+                            "Agent Web port blocked from other networks.",
+                            color=ft.Colors.AMBER_900,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                    ),
+                ),
                 self._card(
                     "Connection approval",
-                    [
+                    controls=[
                         self.controller_name,
                         self.pairing_code,
                         ft.Row([pair_button, check_button, self.busy]),
@@ -145,7 +158,7 @@ class WebControllerView:
                 ),
                 self._card(
                     "Thunderstore profile and local build",
-                    [
+                    controls=[
                         self.profile_code,
                         self.profile_id,
                         ft.Row([choose_button, self.local_mod]),
@@ -154,7 +167,7 @@ class WebControllerView:
                 ),
                 self._card(
                     "Mod configuration editor",
-                    [
+                    controls=[
                         self.config_selector,
                         ft.Row([load_config, save_config, install_button]),
                         self.config_editor,
@@ -162,7 +175,7 @@ class WebControllerView:
                 ),
                 self._card(
                     "Instances",
-                    [
+                    controls=[
                         ft.ResponsiveRow(
                             [
                                 self.instance_name,
@@ -190,7 +203,7 @@ class WebControllerView:
         )
 
     @staticmethod
-    def _card(title: str, controls: list[ft.Control]) -> ft.Control:
+    def _card(title: str, *, controls: list[ft.Control]) -> ft.Control:
         return ft.Card(
             content=ft.Container(
                 padding=20,
@@ -211,6 +224,7 @@ class WebControllerView:
             controller_id=identity.controller_id,
             controller_name=identity.name,
             public_key_b64=identity.public_key_b64,
+            persist_authorization=False,
         )
         self.status.value = "Connection requested. Approve it in the Agent native GUI."
 
@@ -302,7 +316,7 @@ class WebControllerView:
 
     async def _load_config_action(self) -> None:
         draft, relative = self._selected_config()
-        self.config_editor.value = self._context.workspace.read_config(draft, relative)
+        self.config_editor.value = self._context.workspace.read_config(draft, relative=relative)
         self.status.value = f"Loaded {relative}."
 
     async def _save_config(self, _event: ft.Event[ft.Button]) -> None:
@@ -310,7 +324,11 @@ class WebControllerView:
 
     async def _save_config_action(self) -> None:
         draft, relative = self._selected_config()
-        self._context.workspace.write_config(draft, relative, self.config_editor.value or "")
+        self._context.workspace.write_config(
+            draft,
+            relative=relative,
+            content=self.config_editor.value or "",
+        )
         self.status.value = f"Saved {relative}."
 
     async def _install_profile(self, _event: ft.Event[ft.Button]) -> None:
@@ -331,7 +349,8 @@ class WebControllerView:
             destination=bundle,
         )
         installed_name = await self._context.runtime.install_profile(
-            profile_id, bundle.read_bytes()
+            profile_id,
+            bundle=bundle.read_bytes(),
         )
         self.status.value = f"Installed {installed_name}: {len(manifest.files)} verified files."
         shutil.rmtree(self._draft)

@@ -276,9 +276,13 @@ def test_workspace_materialize_edit_bundle_and_extract(tmp_path: Path) -> None:
     assert len(fetcher.calls) == 1
     configs = workspace.config_files(profile)
     assert [path.name for path in configs] == ["com.example.cfg"]
-    assert workspace.read_config(profile, "com.example.cfg") == "Enabled = true\n"
-    workspace.write_config(profile, "com.example.cfg", "Enabled = false\n")
-    assert workspace.read_config(profile, "com.example.cfg") == "Enabled = false\n"
+    assert workspace.read_config(profile, relative="com.example.cfg") == "Enabled = true\n"
+    workspace.write_config(
+        profile,
+        relative="com.example.cfg",
+        content="Enabled = false\n",
+    )
+    assert workspace.read_config(profile, relative="com.example.cfg") == "Enabled = false\n"
 
     bundle = tmp_path / "profile.mdp-profile"
     manifest = workspace.create_bundle(
@@ -326,14 +330,18 @@ def test_config_editor_rejections(tmp_path: Path) -> None:
     config.write_text("x", encoding="utf-8")
     for relative in ("../escape.cfg", "C:\\escape.cfg"):
         with pytest.raises(ProfileImportError):
-            ProfileWorkspace.read_config(profile, relative)
+            ProfileWorkspace.read_config(profile, relative=relative)
     with pytest.raises(ProfileImportError):
-        ProfileWorkspace.write_config(profile, "missing.cfg", "x")
+        ProfileWorkspace.write_config(profile, relative="missing.cfg", content="x")
     with pytest.raises(ProfileImportError):
-        ProfileWorkspace.write_config(profile, "a.cfg", "x" * (2 * 1024 * 1024 + 1))
+        ProfileWorkspace.write_config(
+            profile,
+            relative="a.cfg",
+            content="x" * (2 * 1024 * 1024 + 1),
+        )
     config.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
     with pytest.raises(ProfileImportError):
-        ProfileWorkspace.read_config(profile, "a.cfg")
+        ProfileWorkspace.read_config(profile, relative="a.cfg")
 
 
 def test_bundle_manifest_and_entry_rejections(tmp_path: Path) -> None:
@@ -453,7 +461,7 @@ def test_package_layout_and_archive_edge_cases(tmp_path: Path) -> None:
     ):
         _install_package(package, destination=destination, package_name="x")
     with pytest.raises(ProfileImportError):
-        _confined_target(destination, "")
+        _confined_target(destination, relative="")
 
 
 def test_r2z_archive_limit_and_missing_metadata() -> None:

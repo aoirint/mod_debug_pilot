@@ -354,7 +354,13 @@ def test_runtime_install_launch_capture_stop_and_artifact(tmp_path: Path) -> Non
         ProfileWorkspace.create_bundle(
             draft, profile_name="Profile", source_mods=(), destination=bundle
         )
-        assert await runtime.install_profile("profile-1", bundle.read_bytes()) == "Profile"
+        assert (
+            await runtime.install_profile(
+                "profile-1",
+                bundle=bundle.read_bytes(),
+            )
+            == "Profile"
+        )
         snapshot = await runtime.launch(InstanceSpec(name="host", profile_id="profile-1"))
         assert snapshot.status is InstanceStatus.RUNNING
         assert "MODDEBUGPILOT_SAVE_ROOT" in launcher.environment
@@ -362,7 +368,8 @@ def test_runtime_install_launch_capture_stop_and_artifact(tmp_path: Path) -> Non
         assert "--doorstop-target" in launcher.arguments
         capture = await runtime.capture(snapshot.instance_id)
         assert runtime.artifact(
-            snapshot.instance_id, capture.relative_to(capture.parents[1]).as_posix()
+            snapshot.instance_id,
+            relative=capture.relative_to(capture.parents[1]).as_posix(),
         )
         stopped = await runtime.stop(snapshot.instance_id)
         assert stopped.status is InstanceStatus.STOPPED
@@ -379,16 +386,19 @@ def test_runtime_install_and_lookup_rejections(tmp_path: Path) -> None:
     async def run() -> None:
         runtime, _, config = make_runtime(tmp_path)
         with pytest.raises(ProfileImportError, match="large"):
-            await runtime.install_profile("p", b"x" * (config.max_upload_bytes + 1))
+            await runtime.install_profile(
+                "p",
+                bundle=b"x" * (config.max_upload_bytes + 1),
+            )
         with pytest.raises(ProfileImportError, match="identifier"):
-            await runtime.install_profile("../p", b"x")
+            await runtime.install_profile("../p", bundle=b"x")
         with pytest.raises(AgentRuntimeError, match="installed"):
             await runtime.launch(InstanceSpec(name="x", profile_id="missing"))
         for operation in (runtime.stop, runtime.capture):
             with pytest.raises(AgentRuntimeError, match="not found"):
                 await operation("missing")
         with pytest.raises(AgentRuntimeError, match="not found"):
-            runtime.artifact("missing", "x")
+            runtime.artifact("missing", relative="x")
 
     asyncio.run(run())
 
@@ -533,16 +543,16 @@ def test_runtime_helpers_and_system_default(tmp_path: Path) -> None:
     assert not _safe_identifier("bad/name")
     root = tmp_path / "root"
     root.mkdir()
-    assert _confined(root, "a.txt") == root / "a.txt"
+    assert _confined(root, relative="a.txt") == root / "a.txt"
     for relative in ("", "../x"):
         with pytest.raises(AgentRuntimeError):
-            _confined(root, relative)
+            _confined(root, relative=relative)
     marker = root / "log"
-    assert not _file_contains(marker, "x")
+    assert not _file_contains(marker, marker="x")
     marker.write_text("hello x", encoding="utf-8")
-    assert _file_contains(marker, "x")
+    assert _file_contains(marker, marker="x")
     with patch.object(Path, "read_text", side_effect=OSError):
-        assert not _file_contains(marker, "x")
+        assert not _file_contains(marker, marker="x")
     config = make_config(tmp_path / "default")
     with patch("mod_debug_pilot.infrastructure.agent_runtime.sys.platform", "win32"):
         assert isinstance(RemoteAgentRuntime.system_default(config), RemoteAgentRuntime)
@@ -587,7 +597,7 @@ def test_runtime_none_process_and_missing_artifact(tmp_path: Path) -> None:
         make_profile(config.data_root / "profiles/p")
         snapshot = await runtime.launch(InstanceSpec(name="x", profile_id="p"))
         with pytest.raises(AgentRuntimeError, match="Artifact"):
-            runtime.artifact(snapshot.instance_id, "missing")
+            runtime.artifact(snapshot.instance_id, relative="missing")
         await runtime.stop(snapshot.instance_id)
 
     asyncio.run(run())

@@ -321,7 +321,7 @@ class RemoteAgentRuntime:
             await asyncio.to_thread(self._bootstrap.recover)
             await asyncio.to_thread(self._save.recover)
 
-    async def install_profile(self, profile_id: str, bundle: bytes) -> str:
+    async def install_profile(self, profile_id: str, *, bundle: bytes) -> str:
         """Validate and install one immutable controller-built profile."""
         if len(bundle) > self._config.max_upload_bytes:
             raise ProfileImportError("Uploaded profile is too large.")
@@ -432,7 +432,11 @@ class RemoteAgentRuntime:
         while asyncio.get_running_loop().time() < deadline:
             if process.returncode is not None:
                 raise AgentRuntimeError("Game exited before save isolation was ready.")
-            if await asyncio.to_thread(_file_contains, log_path, _SAVE_REDIRECT_READY):
+            if await asyncio.to_thread(
+                _file_contains,
+                log_path,
+                marker=_SAVE_REDIRECT_READY,
+            ):
                 return
             await asyncio.sleep(0.2)
         await process.terminate_tree()
@@ -453,7 +457,11 @@ class RemoteAgentRuntime:
                 raise AgentRuntimeError("Instance was not found.")
             if instance.snapshot.status not in {InstanceStatus.STOPPED, InstanceStatus.FAILED}:
                 await instance.process.terminate_tree()
-                self._set_status(instance, InstanceStatus.STOPPED, "Stopped by operator.")
+                self._set_status(
+                    instance,
+                    status=InstanceStatus.STOPPED,
+                    message="Stopped by operator.",
+                )
             await self._finalize_if_idle()
             return instance.snapshot
 
@@ -478,9 +486,17 @@ class RemoteAgentRuntime:
                 if instance.snapshot.status in {InstanceStatus.STARTING, InstanceStatus.RUNNING}:
                     try:
                         await instance.process.terminate_tree()
-                        self._set_status(instance, InstanceStatus.STOPPED, "Stopped with agent.")
+                        self._set_status(
+                            instance,
+                            status=InstanceStatus.STOPPED,
+                            message="Stopped with agent.",
+                        )
                     except OSError:
-                        self._set_status(instance, InstanceStatus.FAILED, "Process cleanup failed.")
+                        self._set_status(
+                            instance,
+                            status=InstanceStatus.FAILED,
+                            message="Process cleanup failed.",
+                        )
             await asyncio.to_thread(self._bootstrap.restore)
             await asyncio.to_thread(self._save.restore)
         for watcher in self._watchers.values():
@@ -488,12 +504,12 @@ class RemoteAgentRuntime:
         await asyncio.gather(*self._watchers.values(), return_exceptions=True)
         self._watchers.clear()
 
-    def artifact(self, instance_id: str, relative: str) -> Path:
+    def artifact(self, instance_id: str, *, relative: str) -> Path:
         """Resolve one regular artifact without allowing traversal."""
         instance = self._instances.get(instance_id)
         if instance is None:
             raise AgentRuntimeError("Instance was not found.")
-        target = _confined(instance.artifact_dir, relative)
+        target = _confined(instance.artifact_dir, relative=relative)
         if not target.is_file():
             raise AgentRuntimeError("Artifact was not found.")
         return target
@@ -506,12 +522,12 @@ class RemoteAgentRuntime:
             ):
                 self._set_status(
                     instance,
-                    (
+                    status=(
                         InstanceStatus.STOPPED
                         if instance.process.returncode == 0
                         else InstanceStatus.FAILED
                     ),
-                    f"Process exited with code {instance.process.returncode}.",
+                    message=f"Process exited with code {instance.process.returncode}.",
                 )
 
     async def _finalize_if_idle(self) -> None:
@@ -545,7 +561,12 @@ class RemoteAgentRuntime:
         )
 
     @staticmethod
-    def _set_status(instance: _Instance, status: InstanceStatus, message: str) -> None:
+    def _set_status(
+        instance: _Instance,
+        *,
+        status: InstanceStatus,
+        message: str,
+    ) -> None:
         instance.snapshot = InstanceSnapshot(
             instance_id=instance.snapshot.instance_id,
             name=instance.snapshot.name,
@@ -575,7 +596,7 @@ def _safe_identifier(value: str) -> bool:
     )
 
 
-def _confined(root: Path, relative: str) -> Path:
+def _confined(root: Path, *, relative: str) -> Path:
     candidate = (root / relative).resolve()
     resolved = root.resolve()
     if candidate == resolved or resolved not in candidate.parents:
@@ -587,7 +608,7 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _file_contains(path: Path, marker: str) -> bool:
+def _file_contains(path: Path, *, marker: str) -> bool:
     if not path.is_file():
         return False
     try:

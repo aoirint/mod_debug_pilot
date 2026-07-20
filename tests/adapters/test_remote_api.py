@@ -163,19 +163,29 @@ def test_real_pinned_tls_pairing_and_remote_operations(tmp_path: Path) -> None:
         assert await client.pairing_status(request_id, poll_token=token) == "pending"
         broker.decide(request_id, approve=True)
         assert await client.pairing_status(request_id, poll_token=token) == "approved"
-        assert await client.install_profile("profile", b"bundle") == "Installed"
+        assert await client.install_profile("profile", bundle=b"bundle") == "Installed"
         launched = await client.launch(InstanceSpec(name="host", profile_id="profile"))
         assert await client.list_instances() == (launched,)
         artifact = await client.capture(launched.instance_id)
         assert artifact == "screenshots/capture.png"
-        assert await client.download_artifact(launched.instance_id, artifact) == b"png"
+        assert (
+            await client.download_artifact(
+                launched.instance_id,
+                relative=artifact,
+            )
+            == b"png"
+        )
         with (
             patch("mod_debug_pilot.infrastructure.remote_api._MAX_ARTIFACT", 2),
             pytest.raises(RemoteApiError, match="download limit"),
         ):
-            await client.download_artifact(launched.instance_id, artifact)
+            await client.download_artifact(launched.instance_id, relative=artifact)
         with pytest.raises(RemoteApiError, match="HTTP 404"):
-            await client._request_bytes("GET", "/missing", signed=True)  # noqa: SLF001
+            await client._request_bytes(  # noqa: SLF001
+                "GET",
+                path="/missing",
+                signed=True,
+            )
         assert (await client.stop(launched.instance_id)).status is InstanceStatus.STOPPED
 
         conflicting = AgentApiServer(
@@ -258,12 +268,12 @@ def test_api_client_validation_and_response_failures() -> None:
             patch.object(client, "_request_bytes", AsyncMock(return_value=b"not-json")),
             pytest.raises(RemoteApiError, match="invalid JSON"),
         ):
-            await client._request("GET", "/x", signed=False)  # noqa: SLF001
+            await client._request("GET", path="/x", signed=False)  # noqa: SLF001
         with (
             patch.object(client, "_request_bytes", AsyncMock(return_value=b"[]")),
             pytest.raises(RemoteApiError, match="response object"),
         ):
-            await client._request("GET", "/x", signed=False)  # noqa: SLF001
+            await client._request("GET", path="/x", signed=False)  # noqa: SLF001
         with (
             patch.object(client, "_request", AsyncMock(return_value={"instances": {}})),
             pytest.raises(RemoteApiError, match="instance list"),
@@ -274,12 +284,16 @@ def test_api_client_validation_and_response_failures() -> None:
             patch.object(client, "_request_bytes", AsyncMock(return_value=b"xxx")),
             pytest.raises(RemoteApiError, match="download limit"),
         ):
-            await client.download_artifact("id", "a")
+            await client.download_artifact("id", relative="a")
         with (
             patch("aiohttp.ClientSession.request", side_effect=aiohttp.ClientError),
             pytest.raises(RemoteApiError, match="connection"),
         ):
-            await client._request_bytes("GET", "/x", signed=False)  # noqa: SLF001
+            await client._request_bytes(  # noqa: SLF001
+                "GET",
+                path="/x",
+                signed=False,
+            )
 
         class ErrorResponse:
             status = _HTTP_BAD_REQUEST
@@ -310,7 +324,11 @@ def test_api_client_validation_and_response_failures() -> None:
             patch("mod_debug_pilot.infrastructure.remote_api.aiohttp.ClientSession", ErrorSession),
             pytest.raises(RemoteApiError, match="HTTP 400"),
         ):
-            await client._request_bytes("GET", "/x", signed=False)  # noqa: SLF001
+            await client._request_bytes(  # noqa: SLF001
+                "GET",
+                path="/x",
+                signed=False,
+            )
 
     asyncio.run(run())
 
@@ -318,10 +336,10 @@ def test_api_client_validation_and_response_failures() -> None:
 def test_api_helpers_and_error_statuses() -> None:
     """Wire helpers reject invalid JSON and map public error categories."""
     assert bundle_digest(b"x") == "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
-    assert _required_string({"x": "ok"}, "x") == "ok"
+    assert _required_string({"x": "ok"}, name="x") == "ok"
     for value in (None, ""):
         with pytest.raises(RemoteApiError):
-            _required_string({"x": value}, "x")
+            _required_string({"x": value}, name="x")
     assert _status_for(AuthenticationError()) == _HTTP_UNAUTHORIZED
     assert _status_for(ProfileImportError()) == _HTTP_BAD_REQUEST
     assert _status_for(ValueError()) == _HTTP_BAD_REQUEST
@@ -385,7 +403,7 @@ def test_signed_route_failure_mapping(
         )
         if isinstance(failure, ProfileImportError):
             with pytest.raises(RemoteApiError, match=str(failure)):
-                await client.install_profile("profile", b"bundle")
+                await client.install_profile("profile", bundle=b"bundle")
         else:
             with pytest.raises(RemoteApiError, match=str(failure)):
                 await client.list_instances()
@@ -394,7 +412,7 @@ def test_signed_route_failure_mapping(
                     client.launch(InstanceSpec(name="x", profile_id="profile")),
                     client.stop("instance"),
                     client.capture("instance"),
-                    client.download_artifact("instance", "x"),
+                    client.download_artifact("instance", relative="x"),
                 )
                 for operation in operations:
                     with pytest.raises(RemoteApiError, match=str(failure)):

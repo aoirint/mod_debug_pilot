@@ -32,6 +32,7 @@ _WRONG_PASSPHRASE = "wrong-passphrase"  # noqa: S105 - invalid test fixture
 _INCORRECT_PASSPHRASE = "incorrect password"  # noqa: S105 - invalid test fixture
 _WRONG_POLL_TOKEN = "wrong"  # noqa: S105 - invalid test fixture
 _SHA256_OCTETS = 32
+_PAIRING_CODE_DIGITS = 8
 
 
 def test_agent_identity_create_load_and_tls_context(tmp_path: Path) -> None:
@@ -259,6 +260,7 @@ def test_pairing_approval_rejection_and_expiry(tmp_path: Path) -> None:
     broker = PairingBroker(store)
     identity = create_ephemeral_controller_identity("Browser")
     code = broker.open(now=100)
+    assert len(code) == _PAIRING_CODE_DIGITS
     pending = broker.request(
         code=code,
         controller_id=identity.controller_id,
@@ -337,3 +339,41 @@ def test_pairing_rejects_wrong_code_key_id_and_poll_token(tmp_path: Path) -> Non
     )
     with pytest.raises(AuthenticationError, match="not found"):
         broker.status(pending.request_id, poll_token=_WRONG_POLL_TOKEN)
+
+
+def test_pairing_bounds_guesses_and_keeps_web_approval_ephemeral(tmp_path: Path) -> None:
+    """Five wrong guesses close pairing and Web approval writes no durable key."""
+    authorization_path = tmp_path / "approved.json"
+    broker = PairingBroker(AuthorizationStore(authorization_path))
+    identity = create_ephemeral_controller_identity("Browser")
+    code = broker.open(now=1)
+    for attempt in range(5):
+        with pytest.raises(AuthenticationError, match="expired"):
+            broker.request(
+                code=f"wrong-{attempt}",
+                controller_id=identity.controller_id,
+                controller_name=identity.name,
+                public_key_b64=identity.public_key_b64,
+                now=2,
+            )
+    with pytest.raises(AuthenticationError, match="expired"):
+        broker.request(
+            code=code,
+            controller_id=identity.controller_id,
+            controller_name=identity.name,
+            public_key_b64=identity.public_key_b64,
+            now=3,
+        )
+
+    code = broker.open(now=4)
+    pending = broker.request(
+        code=code,
+        controller_id=identity.controller_id,
+        controller_name=identity.name,
+        public_key_b64=identity.public_key_b64,
+        persist_authorization=False,
+        now=5,
+    )
+    broker.decide(pending.request_id, approve=True)
+    assert broker.status(pending.request_id, poll_token=pending.poll_token) is True
+    assert not authorization_path.exists()
