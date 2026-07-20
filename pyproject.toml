@@ -26,6 +26,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "flet-cli>=0.85,<0.86",
     "mypy>=1.17,<2",
     "pytest>=8.4,<10",
     "pytest-cov>=6.2,<8",
