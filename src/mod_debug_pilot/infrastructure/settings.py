@@ -49,7 +49,7 @@ class JsonConfigRepository:
         await asyncio.to_thread(
             write_json_atomic,
             self._path,
-            {"schema_version": 1, "config": config.to_mapping()},
+            payload={"schema_version": 1, "config": config.to_mapping()},
         )
 
     def _load_sync(self) -> PilotConfig | None:
@@ -71,7 +71,7 @@ class JsonConfigRepository:
         return PilotConfig.from_mapping(values)
 
 
-def write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
+def write_json_atomic(path: Path, *, payload: Mapping[str, object]) -> None:
     """Write UTF-8 JSON through a private same-filesystem temporary file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(

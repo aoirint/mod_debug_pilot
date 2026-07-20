@@ -101,7 +101,7 @@ def test_atomic_writer_removes_temporary_file_after_failure(tmp_path: Path) -> N
         patch("mod_debug_pilot.infrastructure.settings.json.dump", side_effect=TypeError),
         pytest.raises(TypeError),
     ):
-        write_json_atomic(path, {"bad": object()})
+        write_json_atomic(path, payload={"bad": object()})
 
     assert not path.exists()
     assert list(tmp_path.iterdir()) == []

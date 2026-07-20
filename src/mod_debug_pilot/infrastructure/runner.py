@@ -235,12 +235,12 @@ class LocalJobExecutor:
         await asyncio.to_thread(
             write_json_atomic,
             artifact_dir / "request.json",
-            request.to_mapping(),
+            payload=request.to_mapping(),
         )
         await asyncio.to_thread(
             write_json_atomic,
             artifact_dir / "environment.json",
-            self._environment_payload(request.config),
+            payload=self._environment_payload(request.config),
         )
         try:
             issues = self._validation_issues(request.config)
@@ -273,7 +273,7 @@ class LocalJobExecutor:
             await asyncio.to_thread(
                 write_json_atomic,
                 artifact_dir / "result.json",
-                canceled.to_mapping(),
+                payload=canceled.to_mapping(),
             )
             raise
         except OSError:
@@ -287,7 +287,7 @@ class LocalJobExecutor:
         await asyncio.to_thread(
             write_json_atomic,
             artifact_dir / "result.json",
-            result.to_mapping(),
+            payload=result.to_mapping(),
         )
         return result
 
@@ -402,7 +402,11 @@ class LocalJobExecutor:
         while self._clock.monotonic() < deadline:
             if process.returncode is not None:
                 return JobOutcome.FAILED, "Game exited before the ready marker appeared."
-            if await asyncio.to_thread(_file_contains, log_path, config.ready_marker):
+            if await asyncio.to_thread(
+                _file_contains,
+                log_path,
+                marker=config.ready_marker,
+            ):
                 await self._clock.sleep(config.screenshot_delay_seconds)
                 await self._capturer.capture(artifact_dir / "screenshots" / "ready.png")
                 return JobOutcome.SUCCEEDED, "Smoke test reached the ready marker."
@@ -434,7 +438,7 @@ class LocalJobExecutor:
         root = Path(request.config.artifact_root).resolve()
         game_dir = Path(request.config.game_executable).parent.resolve()
         base_profile = Path(request.config.base_profile_dir).resolve()
-        if _is_within(root, game_dir) or _is_within(root, base_profile):
+        if _is_within(root, parent=game_dir) or _is_within(root, parent=base_profile):
             raise UnsafeArtifactPathError
         return root / request.job_id
 
@@ -493,7 +497,7 @@ class _BootstrapGuard:
         self._active = False
 
 
-def _file_contains(path: Path, marker: str) -> bool:
+def _file_contains(path: Path, *, marker: str) -> bool:
     if not path.is_file():
         return False
     try:
@@ -502,5 +506,5 @@ def _file_contains(path: Path, marker: str) -> bool:
         return False
 
 
-def _is_within(path: Path, parent: Path) -> bool:
+def _is_within(path: Path, *, parent: Path) -> bool:
     return path == parent or parent in path.parents
