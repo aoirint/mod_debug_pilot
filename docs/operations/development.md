@@ -23,7 +23,7 @@ dotnet format ModDebugPilot.slnx --no-restore --verify-no-changes
 dotnet build ModDebugPilot.slnx --configuration Release --no-restore --warnaserror
 dotnet run --project helpers/ModDebugPilot.SaveRedirector.Tests --configuration Release --no-build
 uv build
-actionlint .github/workflows/ci.yml
+actionlint -color
 pinact run --check --min-age 7
 ```
 

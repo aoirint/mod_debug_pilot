@@ -1,0 +1,20 @@
+name: Lint source
+description: Run workflow and Python quality checks from the locked environment.
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/install-workflow-tools
+    - shell: bash
+      run: actionlint -color
+    - shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: pinact run --check --min-age 7
+    - uses: ./.github/actions/setup-python
+    - shell: bash
+      run: uv run --locked ruff format --check .
+    - shell: bash
+      run: uv run --locked ruff check .
+    - shell: bash
+      run: uv run --locked mypy src tests

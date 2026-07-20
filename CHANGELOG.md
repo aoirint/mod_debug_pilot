@@ -7,6 +7,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added event-owned pull-request and `main` CI workflows with direct Windows
+  packaging gates, inspected archives, a SHA-256 artifact manifest, and
+  retained exact-commit build output.
+- Added same-runner Composite Actions for locked Python setup, workflow lint
+  tooling, Python checks, and save-redirector verification.
 - Added an operator-started native Agent and trusted-LAN HTTP Flet Web controller
   requiring one-time pairing plus local approval.
 - Added self-signed TLS identity management, certificate-pinned API clients,

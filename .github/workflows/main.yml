@@ -1,0 +1,144 @@
+name: Main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/lint-source
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/test-source
+
+  save-redirector:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/test-save-redirector
+
+  build-windows:
+    needs: [lint, test, save-redirector]
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - id: toolchain
+        shell: pwsh
+        run: |
+          $versions = Get-Content .python-version
+          if ($versions.Count -ne 1 -or [string]::IsNullOrWhiteSpace($versions[0])) {
+            throw ".python-version must select exactly one Python version."
+          }
+          "python_version=$($versions[0].Trim())" >> $env:GITHUB_OUTPUT
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: ${{ steps.toolchain.outputs.python_version }}
+          version: "0.11.21"
+      - shell: pwsh
+        run: uv lock --check
+      - shell: pwsh
+        run: uv sync --locked --all-groups
+      - shell: pwsh
+        run: uv build
+      - shell: pwsh
+        run: uv run --locked flet build windows --no-rich-output --yes
+      - name: Inspect packaged Python and Windows archives
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $expected = (Get-FileHash -Algorithm SHA256 src/mod_debug_pilot/assets/ModDebugPilot.SaveRedirector.dll).Hash
+          $archives = @(
+            Get-ChildItem dist -Filter *.whl -File
+            Get-Item build/windows/data/flutter_assets/app/app.zip
+          )
+          foreach ($archive in $archives) {
+            $zip = [IO.Compression.ZipFile]::OpenRead($archive.FullName)
+            try {
+              $entries = @($zip.Entries | ForEach-Object FullName)
+              if ($entries | Where-Object { $_ -match '(^|/)\.\.(/|$)' -or $_ -match '^(?:[A-Za-z]:|/)' }) {
+                throw "Unsafe archive path found in $($archive.Name)."
+              }
+              if ($entries | Where-Object {
+                $_ -match '(^|/)(\.git|\.env)(/|$)' -or
+                $_ -match '^(?:tests?|mod_debug_pilot/tests?)/'
+              }) {
+                throw "Repository development or secret-shaped path found in $($archive.Name)."
+              }
+              $dll = $zip.Entries | Where-Object FullName -eq 'mod_debug_pilot/assets/ModDebugPilot.SaveRedirector.dll'
+              if ($null -eq $dll) {
+                throw "Embedded save redirector missing from $($archive.Name)."
+              }
+              $stream = $dll.Open()
+              try {
+                $sha = [Security.Cryptography.SHA256]::Create()
+                try {
+                  $actual = [Convert]::ToHexString($sha.ComputeHash($stream))
+                } finally {
+                  $sha.Dispose()
+                }
+              } finally {
+                $stream.Dispose()
+              }
+              if ($actual -ne $expected) {
+                throw "Embedded save redirector differs in $($archive.Name)."
+              }
+            } finally {
+              $zip.Dispose()
+            }
+          }
+      - id: manifest
+        shell: pwsh
+        run: |
+          $files = @(
+            Get-ChildItem dist -File
+            Get-Item build/windows/mod-debug-pilot.exe
+            Get-Item build/windows/data/flutter_assets/app/app.zip
+          ) | ForEach-Object {
+            [PSCustomObject]@{
+              path = $_.FullName.Substring($env:GITHUB_WORKSPACE.Length + 1).Replace('\', '/')
+              sha256 = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash
+              bytes = $_.Length
+            }
+          }
+          $manifest = [PSCustomObject]@{
+            source_commit = $env:GITHUB_SHA
+            uv_version = (& uv --version)
+            files = $files
+          }
+          $manifest | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8 ci-artifacts.json
+          Get-Content ci-artifacts.json | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: mod-debug-pilot-${{ github.sha }}
+          path: |
+            dist/
+            build/windows/
+            ci-artifacts.json
+          if-no-files-found: error
+          retention-days: 14

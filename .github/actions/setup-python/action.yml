@@ -1,0 +1,29 @@
+name: Set up locked Python environment
+description: Install the reviewed uv/Python toolchain and synchronize the exact lock.
+
+runs:
+  using: composite
+  steps:
+    - id: toolchain
+      shell: bash
+      run: |
+        mapfile -t versions < .python-version
+        version="${versions[0]%$'\r'}"
+        if [[ "${#versions[@]}" -ne 1 || -z "${version}" ]]; then
+          echo ".python-version must select exactly one Python version." >&2
+          exit 1
+        fi
+        echo "python_version=${version}" >> "$GITHUB_OUTPUT"
+        echo "uv_version=0.11.21" >> "$GITHUB_OUTPUT"
+
+    - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: ${{ steps.toolchain.outputs.python_version }}
+        version: ${{ steps.toolchain.outputs.uv_version }}
+
+    - shell: bash
+      run: uv lock --check
+
+    - shell: bash
+      run: uv sync --locked --all-groups

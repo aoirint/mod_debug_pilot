@@ -16,6 +16,11 @@ evidence report when the game-library baseline changes.
 GitHub Actions changes must also pass:
 
 ```powershell
-actionlint .github/workflows/ci.yml
+actionlint -color
 pinact run --check --min-age 7
 ```
+
+Pull requests validate proposed source through the `Pull Request` workflow.
+The `Main` workflow re-runs those checks for the exact pushed commit before its
+Windows build and retained artifact job. Do not add manual dispatch or a
+cross-workflow polling gate without a documented diagnostic or recovery need.
