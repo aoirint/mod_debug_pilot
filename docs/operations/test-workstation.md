@@ -2,30 +2,32 @@
 
 ## Prerequisites
 
-- A dedicated non-admin Windows user logged into the console session
-- Steam and the target game already installed by the operator
-- A locally prepared BepInEx 5 Mono base profile
-- Fixed resolution, DPI, game version, and mod build
+- A dedicated non-admin Windows user logged into the physical console session
+- Steam and Lethal Company v81 already installed by the operator
+- Fixed resolution, DPI, game version, and graphics configuration
+- A monitor or EDID emulator and disabled sleep/lock behavior
+- A restricted LAN or firewall rules permitting only the controller source
 
-## Safety and recovery
+The Agent starts both listeners only after a native-window action. Keep RDP for
+maintenance because connection changes can alter display, focus, capture, GPU,
+and controller behavior.
 
-Run only one ModDebugPilot job at a time. The application writes inside its
-configured artifact and disposable-run roots; source game and base-profile
-directories are treated as read-only except for temporary management of
-`winhttp.dll` and `doorstop_config.ini` in the game directory.
+## Filesystem boundaries
 
-If cleanup cannot terminate the game or restore a managed bootstrap file:
+- The game directory is modified only for journaled `winhttp.dll` and
+  `doorstop_config.ini` installation.
+- Normal Lethal Company saves are moved to the adjacent
+  `.moddebugpilot-normal` directory while any debug instance is active.
+- Each debug instance receives its own directory under
+  `<data-root>/instance-saves`.
+- Installed profiles, pairing public keys, journals, controller drafts, package
+  results, and fallback debug-save archives live under the Agent data root.
+- Screenshots, copied profiles, instance metadata, and collected game logs live
+  under the artifact root.
 
-1. Stop accepting jobs and close ModDebugPilot.
-2. Confirm the game process tree has stopped.
-3. Inspect `result.json` and `.moddebugpilot-backup-<job-id>`.
-4. Restore only files that belong to that job; never reuse or delete a foreign
-   backup directory merely because its name is similar.
-5. Re-run **Validate workstation** before another smoke test.
+Do not put the Agent data or artifact root inside the game directory. Do not
+store Steam credentials, private controller keys, or tokens in Agent settings.
+Disable notifications because screenshots capture the complete primary display.
 
-Do not store Steam credentials, SSH keys, or tokens in configuration. Use RDP
-for maintenance only because disconnecting it can change the graphics session.
-Disable notifications because a ready screenshot captures the primary display.
-
-Update this runbook when workstation provisioning, process cleanup, or remote
-transport behavior changes.
+Use [pairing and recovery](pairing-and-recovery.md) for normal operation and
+failure handling.

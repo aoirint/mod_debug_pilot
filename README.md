@@ -1,93 +1,89 @@
 # ModDebugPilot
 
-ModDebugPilot is a Windows desktop tool for reproducible game-mod debugging.
-It creates a disposable BepInEx profile for each run, launches the game in the
-logged-in desktop session, waits for a known log marker, captures the primary
-display, and keeps the evidence in one artifact directory.
+ModDebugPilot is a Windows test-workstation Agent for Lethal Company mod
+development. The native Agent starts an HTTPS-hosted Flet Web controller only
+when the local operator asks it to, displays the certificate fingerprint and a
+one-time pairing code, and requires local approval before a browser session can
+prepare profiles or control game instances.
 
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB)
 ![Flet 0.85.3](https://img.shields.io/badge/Flet-0.85.3-02569B)
 
-## Current capabilities
+## Capabilities
 
-- Save one local test-profile configuration.
-- Validate the game, base BepInEx profile, Debug DLL, and Windows environment.
-- Copy the base profile into a run-specific artifact directory.
-- Install the selected Debug DLL under `BepInEx/plugins/ModDebugPilot`.
-- Launch the game with fixed resolution, Doorstop target, and Mono debugger port.
-- Detect a configurable BepInEx log marker, then capture the primary display.
-- Distinguish success, validation failure, early exit, timeout, and cancellation.
-- Restore pre-existing `winhttp.dll` and `doorstop_config.ini` files after a run.
+- Import a Thunderstore App/r2modman Profile Code.
+- Download only exact enabled Thunderstore package versions over bounded HTTPS.
+- Add a locally selected Debug mod DLL and edit imported UTF-8 mod configs.
+- Install a manifest-and-SHA-256-verified profile on the Agent.
+- Launch, list, screenshot, and stop multiple tracked Lethal Company instances.
+- Give every instance a distinct injected ES3 save root through a bundled
+  BepInEx 5 helper plugin.
+- Journal and restore normal saves plus the shared Doorstop bootstrap after the
+  final instance, shutdown, startup recovery, or failed launch.
+- Expose a signed, certificate-pinned automation API without an arbitrary shell,
+  URL, environment-variable, or launch-argument operation.
 
-ModDebugPilot does not download BepInEx, mods, or game files. It does not expose
-an arbitrary PowerShell, shell command, launch argument, or URL field.
+The browser computer needs only a current browser. Profile assembly and mod
+selection are initiated from the Web UI, while package materialization, runtime
+state, and game processes remain owned by the Agent workstation.
 
 ## Requirements
 
-- Windows 11 x64
-- A dedicated non-admin Windows user logged into the console session
-- Steam and the target Unity game installed by the operator
-- A prepared BepInEx 5 Mono base profile containing:
-  - `winhttp.dll`
-  - `doorstop_config.ini`
-  - `BepInEx/core/BepInEx.Preloader.dll`
-- A locally built mod DLL
-- [uv](https://docs.astral.sh/uv/) for source-based use
+- Windows 11 x64 on the Agent workstation
+- A dedicated non-admin user logged into the physical console session
+- Steam and Lethal Company v81 installed by the operator
+- Network isolation or a host firewall restricting ports 48950 and 48951 to the
+  intended LAN controller
+- Python 3.12, [.NET SDK 10.0.201](global.json), and
+  [uv](https://docs.astral.sh/uv/) for source development
 
-## Run from source
+## Start the Agent
 
 ```powershell
 uv sync --locked --all-groups
-uv run --locked moddebugpilot
+uv run --locked moddebugpilot-agent
 ```
 
-The application stores non-secret settings under Flet's application-data
-directory. On an unpackaged Windows run, it falls back to
-`%APPDATA%\ModDebugPilot\settings.json`.
+In the native window:
 
-## Configure a profile
+1. Set the game executable, Agent data, artifacts, and normal-save directory.
+2. Enter a strong passphrase. It encrypts the Agent TLS private key and is not
+   persisted.
+3. Select **Start secure listeners**.
+4. Open the displayed Controller URL in the controller browser and compare the
+   SHA-256 certificate fingerprint with the native Agent window.
+5. Select **Open pairing window**, enter its one-time code in the browser, then
+   approve the named request in the native Agent window.
 
-1. Select the game executable, BepInEx base-profile directory, Debug mod DLL,
-   and artifact root.
-2. Keep the artifact root outside the game and base-profile directories.
-3. Set the log marker emitted after BepInEx and the target mod are ready.
-4. Save settings, then run **Validate workstation**.
-5. Run **Run smoke test** only after validation passes.
+The certificate is self-signed, so the initial browser warning is expected.
+Do not continue if the browser certificate fingerprint does not match the Agent.
 
-The default resolution is 1280×720, the timeout is 180 seconds, and the Mono
-debugger port is 55555. A smoke test stops the game after the ready screenshot.
+The `moddebugpilot` and `moddebugpilot-agent` entry points currently launch the
+same native Agent application.
 
-## Artifacts
+## Safety boundary
 
-Each job writes `<artifact-root>/<job-id>/`:
+The Agent accepts structured profile, instance, screenshot, and artifact
+operations only. It does not accept arbitrary commands. Profile ZIP paths,
+package redirects, response sizes, file counts, upload sizes, artifact paths,
+identifiers, signatures, timestamps, and nonces are validated before effects.
 
-```text
-request.json
-environment.json
-result.json
-game.log                 # when BepInEx created it
-screenshots/ready.png    # after the ready marker
-profile/                 # disposable run profile
-```
+Save isolation is fail-closed: a game process must emit
+`[MODDEBUGPILOT] save_redirect_ready` from the bundled BepInEx plugin within 30
+seconds or the Agent terminates it. Normal saves are also moved under a journaled
+outer transaction as defense in depth and are restored automatically after the
+last instance.
 
-The screenshot captures the entire primary display. Disable notifications and
-close unrelated applications on the test workstation before running a test.
+Full-display screenshots and logs can contain private information. Disable
+notifications and review artifacts before sharing them.
 
-## Safety and recovery
-
-- Use a dedicated test account and isolated LAN segment.
-- Do not put Steam credentials, SSH keys, or tokens in settings.
-- Keep RDP for maintenance; disconnecting RDP can change the graphics session.
-- If process cleanup or Doorstop restoration fails, stop further jobs and
-  inspect `result.json` plus the `.moddebugpilot-backup-<job-id>` directory in
-  the game directory before changing files manually.
-
-See the [developer documentation](docs/README.md) for architecture, dependency
-evidence, CI, workstation recovery, and verification procedures.
+See the [developer documentation](docs/README.md) for the protocol, v81 save
+evidence, dependency provenance, workstation recovery, and verification steps.
 
 ## Status and license
 
-The project is pre-release (`0.1.0.dev0`). Source, wheel, and sdist builds are
-verified; a signed Windows installer and release channel are not configured.
+The project is pre-release (`0.1.0.dev0`). The application, helper plugin, wheel,
+and sdist are verified locally; a signed Windows installer and release channel
+are not configured.
 
 [MIT](LICENSE)

@@ -1,65 +1,87 @@
 # System design
 
-This design depends on the [target platform](../domain/target-platform.md) and
-[dependency baseline](../domain/dependency-baseline.md).
+This design depends on the [target platform](../domain/target-platform.md),
+[dependency baseline](../domain/dependency-baseline.md), and
+[Lethal Company v81 save evidence](../domain/lethal-company-v81-save-evidence.md).
 
-## Dependency direction
+## Runtime topology
 
 ```text
-entrypoint -> composition -> ui -> presentation -> application -> domain
-                              \                 /
-                               infrastructure --
+Controller browser                         Windows test workstation
+┌─────────────────────┐   HTTPS/TLS       ┌──────────────────────────────┐
+│ Flet Web session    │◄─────────────────►│ Native ModDebugPilot Agent   │
+│ Profile Code + DLL  │                   │ ├─ Flet Web host             │
+│ Config editor       │                   │ ├─ pairing approval          │
+│ Instance controls   │                   │ ├─ profile/runtime services  │
+└─────────────────────┘                   │ └─ signed automation API     │
+                                          │          │ exact operations     │
+                                          │          ▼                    │
+                                          │ Lethal Company instances     │
+                                          │ + BepInEx save redirector    │
+                                          └──────────────────────────────┘
 ```
 
-Domain values and application services do not import Flet or concrete file and
-process adapters. Presentation owns immutable `AppState` snapshots and one
-active asynchronous task. Flet controls render snapshots and emit typed intents.
-Infrastructure owns settings, profile copies, process lifetime, screen capture,
-and artifacts.
+The controller has no Python process, local profile directory, key file, or
+package cache. The browser uploads the selected DLL into its TLS-protected Flet
+session. Server-side controller handlers share Agent-owned services; they do not
+give browser JavaScript filesystem or process access.
 
-## UI state and task ownership
+The separate API on port 48950 is reserved for approved Ed25519 controller
+identities. Both surfaces expose structured operations only. The native Agent
+owns listener start/stop, pairing decisions, recovery, and task termination.
 
-`AppController` owns the mutually exclusive loading, ready, saving, running,
-succeeded, failed, canceled, and closed phases. One generation number rejects
-stale completion. Duplicate starts and saves while busy are rejected.
+## Profile workflow
 
-The page session owns the controller. Close and disconnect handlers unsubscribe
-rendering before closing the controller. Controller close cancels and awaits its
-active task and is idempotent.
+1. Resolve a Profile Code through Thunderstore's legacy-profile endpoint.
+2. Require the `#r2modman` prefix and decode the bounded Base64 `.r2z` ZIP.
+3. Parse `export.r2x` with safe YAML loading and preserve imported `config/` files.
+4. Download exact enabled package versions only from Thunderstore HTTPS hosts.
+5. Extract recognized BepInEx, Doorstop, and root-plugin DLL layouts without
+   links, traversal, unbounded expansion, or executable package scripts.
+6. Add the uploaded local DLL and bundled save redirector to dedicated plugin
+   directories.
+7. Permit edits only to existing bounded `.cfg`, `.ini`, and `.json` files.
+8. Create a profile ZIP whose manifest fixes every relative path, size, and
+   SHA-256 digest. Revalidate it before installing an immutable profile.
 
-## Runner workflow
+Unknown Thunderstore installation layouts are ignored and an incomplete
+BepInEx bootstrap is rejected. This first release is intentionally compatible
+with the common Lethal Company package layouts, not every possible Thunderstore
+install rule.
 
-1. Validate the Windows platform and required local files.
-2. Write `request.json` and a redacted `environment.json`.
-3. Copy the base profile to `<artifact-dir>/profile`.
-4. Copy the Debug DLL to `BepInEx/plugins/ModDebugPilot`.
-5. Back up at most `winhttp.dll` and `doorstop_config.ini` in the game directory.
-6. Install the run profile's Doorstop files.
-7. Launch the game directly with a fixed argument vector and filtered environment.
-8. Wait for early exit, the ready marker, cancellation, or timeout.
-9. Capture the primary display after the configured delay.
-10. Terminate the process tree, restore Doorstop files, collect the BepInEx log,
-    and write `result.json`.
+## Instance and save lifecycle
 
-Cleanup nests Doorstop restoration inside process cleanup so a termination error
-cannot skip restoration. A pre-existing backup directory is treated as foreign
-state and is never modified.
+The Agent tracks the exact process handle it launched. Each instance receives a
+fixed windowed resolution, unique Mono debugger port, copied profile, artifact
+directory, and `MODDEBUGPILOT_SAVE_ROOT`. A bundled BepInEx plugin patches the
+ES3 `FullPath` getter for file saves rooted at `PersistentDataPath` and confines
+the result below that instance root.
 
-## Data and security contracts
+The launch becomes `running` only after the plugin logs its ready marker.
+Early exit or a 30-second timeout terminates the process and rolls back the
+transaction. Multiple simultaneous profiles must use byte-identical
+`winhttp.dll` and `doorstop_config.ini` because those files are shared in the
+game directory.
 
-Settings are public local data: four paths, profile name, timeout, resolution,
-ready marker, screenshot delay, and debugger port. They are validated and
-atomically replaced in the platform application-data directory. Symbolic-link
-settings paths and files over 64 KiB are rejected.
+Normal saves receive a second, journaled defense-in-depth boundary:
 
-Job identifiers are restricted to a safe character set. Artifact roots inside
-the game or base-profile tree are rejected. The game inherits only a reviewed
-set of ordinary Windows environment variables plus a generated
-`MONO_ENV_OPTIONS`; arbitrary environment entries are not forwarded.
+1. Refuse to start if an untracked Lethal Company process is active.
+2. Journal whether the normal save directory existed and move it aside.
+3. Create an empty fallback directory before the first debug instance.
+4. Archive fallback debug files and restore the normal directory after the last
+   live instance.
+5. Recover both save and Doorstop journals before opening the API after an
+   interrupted Agent process.
 
-The application stores no credentials and performs no network request. Its
-remaining sensitive outputs are full-display screenshots, local path names,
-game logs, and copied profiles.
+Ambiguous state—missing normal backup, foreign backup, archive collision, or
+invalid journal—stops recovery without overwriting data.
 
-Update this document when state ownership, dependency direction, allowed jobs,
-launch arguments, persistence, artifacts, or cleanup changes.
+## Legacy local workflow
+
+The original single-machine `PilotView` and `LocalJobExecutor` remain available
+for compatibility. Their domain/presentation/application dependency direction
+is unchanged. New remote effects live behind explicit infrastructure services;
+no remote module adds an arbitrary command boundary.
+
+Update this document when profile formats, state ownership, allowed operations,
+launch arguments, save behavior, artifacts, or cleanup changes.

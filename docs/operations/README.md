@@ -7,3 +7,5 @@ This section owns repeatable maintainer and test-machine procedures.
   triggers, permissions, and local validation.
 - [Test workstation](test-workstation.md) describes the intended Windows test
   environment and recovery boundary.
+- [Pairing and recovery](pairing-and-recovery.md) describes listener startup,
+  browser approval, normal shutdown, and journaled failure recovery.

@@ -5,12 +5,19 @@
 `.github/workflows/ci.yml` runs on pull requests, pushes to `main`, merge queue
 groups, and manual dispatch. It uses `windows-latest`, a 20-minute timeout,
 read-only repository contents, and concurrency cancellation for superseded pull
-requests.
+requests. It receives no release or signing credential.
 
-The job verifies the lock, synchronizes the exact environment, runs Ruff lint
-and format checks, runs strict mypy, requires 100% statement and branch coverage,
-and builds wheel and sdist distributions. It receives no release or signing
-credential.
+The job verifies:
+
+- the uv lock and exact Python environment;
+- Ruff lint and formatting;
+- strict mypy;
+- 100% Python statement and branch coverage;
+- NuGet locked-mode restore;
+- C# formatting and warnings-as-errors Release build;
+- save-root path-confinement tests;
+- byte equality between the locked helper build and embedded DLL; and
+- wheel and sdist construction.
 
 ## Local workflow checks
 
