@@ -1,74 +1,42 @@
-"""Agent-hosted Flet Web controller for browser-only workstations."""
+"""Agent-hosted Flet Web controller adapter."""
 
 from __future__ import annotations
 
-import asyncio
 import re
-import shutil
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 import flet as ft
 
 from mod_debug_pilot.domain import InstanceSnapshot, InstanceSpec, InstanceStatus
-from mod_debug_pilot.infrastructure.agent_runtime import RemoteAgentRuntime
-from mod_debug_pilot.infrastructure.profiles import (
-    ImportedProfile,
-    ProfileImportError,
-    ProfileWorkspace,
-    ThunderstoreProfileImporter,
-)
-from mod_debug_pilot.infrastructure.security import (
-    AuthenticationError,
-    PairingBroker,
-    PairingRequest,
-    create_ephemeral_controller_identity,
-)
+from mod_debug_pilot.presentation import BrowserController
 
-_SAFE_ID: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _MAX_LOCAL_MOD: Final = 64 * 1024 * 1024
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class WebControllerContext:
-    """Agent-owned services shared by independent browser page sessions."""
-
-    pairing: PairingBroker
-    importer: ThunderstoreProfileImporter
-    workspace: ProfileWorkspace
-    runtime: RemoteAgentRuntime
-    data_root: Path
-
-
 class WebControllerView:
-    """Render a controller session that has no local Python installation."""
+    """Render one browser session and emit controller actions."""
 
-    def __init__(self, page: ft.Page, *, context: WebControllerContext) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
-        """Create one initially unauthorized browser session."""
+    def __init__(self, page: ft.Page, *, controller: BrowserController) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
+        """Create one initially unauthorized browser view."""
         self._page = page
-        self._context = context
-        self._pairing: PairingRequest | None = None
-        self._approved = False
+        self._controller = controller
         self._local_mod_name = ""
         self._local_mod_bytes: bytes | None = None
-        self._draft: Path | None = None
-        self._imported: ImportedProfile | None = None
         self._picker = ft.FilePicker()
-        self.status = ft.Text("Enter the Agent-displayed pairing code.", selectable=True)
+        self.status = ft.Text(selectable=True)
         self.controller_name = ft.TextField(label="Controller name", value="Browser controller")
         self.pairing_code = ft.TextField(label="One-time pairing code", password=True)
         self.profile_code = ft.TextField(label="Thunderstore Profile Code")
         self.profile_id = ft.TextField(label="Profile ID", value="debug-profile")
         self.local_mod = ft.Text("No local DLL selected.", selectable=True)
-        self.config_selector = ft.Dropdown(label="Mod configuration", disabled=True)
+        self.config_selector = ft.Dropdown(label="Mod configuration")
         self.config_editor = ft.TextField(
             label="Configuration contents (UTF-8)",
             multiline=True,
             min_lines=12,
             max_lines=24,
-            disabled=True,
         )
         self.instance_name = ft.TextField(label="Instance name", value="client-1")
         self.debugger_port = ft.TextField(label="Debugger port", value="55555")
@@ -76,10 +44,15 @@ class WebControllerView:
         self.busy = ft.ProgressRing(width=20, height=20, visible=False)
         self._privileged_controls: list[ft.Control] = []
         self._root = self._build()
+        self._render()
 
     def build(self) -> ft.Control:
         """Return the stable page root."""
         return self._root
+
+    async def close(self) -> None:
+        """Discard unfinished state owned by this browser page."""
+        await self._controller.close()
 
     def _build(self) -> ft.Control:
         pair_button = ft.Button("Request connection", on_click=self._request_pairing)
@@ -106,8 +79,6 @@ class WebControllerView:
             self.instance_name,
             self.debugger_port,
         ]
-        for control in self._privileged_controls:
-            control.disabled = True
         header = ft.Container(
             bgcolor=ft.Colors.BLUE_GREY_900,
             padding=ft.Padding.symmetric(horizontal=28, vertical=20),
@@ -220,15 +191,10 @@ class WebControllerView:
         await self._perform(action=self._request_pairing_action)
 
     async def _request_pairing_action(self) -> None:
-        identity = create_ephemeral_controller_identity(name=self.controller_name.value or "")
-        self._pairing = self._context.pairing.request(
+        self._controller.request_pairing(
             code=self.pairing_code.value or "",
-            controller_id=identity.controller_id,
-            controller_name=identity.name,
-            public_key_b64=identity.public_key_b64,
-            persist_authorization=False,
+            controller_name=self.controller_name.value or "",
         )
-        self.status.value = "Connection requested. Approve it in the Agent native GUI."
 
     async def _check_approval(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.OutlinedButton]
@@ -236,29 +202,12 @@ class WebControllerView:
         await self._perform(action=self._check_approval_action)
 
     async def _check_approval_action(self) -> None:
-        if self._pairing is None:
-            raise AuthenticationError("Request a connection first.")
-        status = self._context.pairing.status(
-            request_id=self._pairing.request_id,
-            poll_token=self._pairing.poll_token,
-        )
-        if status is None:
-            self.status.value = "Still waiting for Agent approval."
-            return
-        if not status:
-            self.status.value = "The Agent operator rejected this session."
-            return
-        self._approved = True
-        for control in self._privileged_controls:
-            control.disabled = False
-        self.config_selector.disabled = True
-        self.config_editor.disabled = True
-        self.status.value = "Approved. This browser session can now control the Agent."
+        self._controller.check_pairing()
 
     async def _choose_mod(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.OutlinedButton]
     ) -> None:
-        if not self._approved:
+        if not self._controller.state.approved:
             return
         files = await self._picker.pick_files(
             dialog_title="Select locally built mod DLL",
@@ -271,12 +220,12 @@ class WebControllerView:
         selected = files[0]
         raw = getattr(selected, "bytes", None)
         if not isinstance(raw, bytes) or len(raw) > _MAX_LOCAL_MOD:
-            self.status.value = "The selected DLL could not be read or exceeds 64 MiB."
+            self._controller.fail(message="The selected DLL could not be read or exceeds 64 MiB.")
         else:
             self._local_mod_name = Path(selected.name).name
             self._local_mod_bytes = raw
             self.local_mod.value = f"{self._local_mod_name} ({len(raw):,} bytes)"
-        self._page.update()
+        self._render_and_update()
 
     async def _import_profile(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.Button]
@@ -284,39 +233,13 @@ class WebControllerView:
         await self._perform(action=self._import_profile_action)
 
     async def _import_profile_action(self) -> None:
-        self._require_approved()
-        profile_id = self._validated_profile_id()
         if self._local_mod_bytes is None:
-            raise ProfileImportError("Select a locally built DLL first.")
-        imported = await self._context.importer.import_code(code=self.profile_code.value or "")
-        draft = self._context.data_root / "controller-drafts" / profile_id
-        if draft.exists():
-            raise ProfileImportError("A draft with this Profile ID already exists.")
-        upload_dir = self._context.data_root / "controller-uploads"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        local_mod = upload_dir / f"{profile_id}-{self._local_mod_name}"
-        local_mod.write_bytes(self._local_mod_bytes)
-        try:
-            await self._context.workspace.materialize(
-                imported=imported,
-                destination=draft,
-                local_mod=local_mod,
-            )
-        finally:
-            local_mod.unlink(missing_ok=True)
-        self._draft = draft
-        self._imported = imported
-        configs = self._context.workspace.config_files(profile=draft)
-        root = draft / "BepInEx" / "config"
-        options = [
-            ft.DropdownOption(key=path.relative_to(root).as_posix(), text=path.name)
-            for path in configs
-        ]
-        self.config_selector.options = options
-        self.config_selector.disabled = not options
-        self.config_editor.disabled = not options
-        self.status.value = (
-            f"Draft prepared with {len(imported.mods)} declared mods and {len(configs)} configs."
+            raise ValueError("Select a locally built DLL first.")
+        await self._controller.prepare_profile(
+            profile_id=self.profile_id.value or "",
+            profile_code=self.profile_code.value or "",
+            local_mod_name=self._local_mod_name,
+            local_mod_bytes=self._local_mod_bytes,
         )
 
     async def _load_config(  # keyword-only-exception: Flet callback ABI.
@@ -325,11 +248,7 @@ class WebControllerView:
         await self._perform(action=self._load_config_action)
 
     async def _load_config_action(self) -> None:
-        draft, relative = self._selected_config()
-        self.config_editor.value = self._context.workspace.read_config(
-            profile=draft, relative=relative
-        )
-        self.status.value = f"Loaded {relative}."
+        self._controller.load_config(relative=self._selected_config())
 
     async def _save_config(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.Button]
@@ -337,13 +256,10 @@ class WebControllerView:
         await self._perform(action=self._save_config_action)
 
     async def _save_config_action(self) -> None:
-        draft, relative = self._selected_config()
-        self._context.workspace.write_config(
-            profile=draft,
-            relative=relative,
+        self._controller.save_config(
+            relative=self._selected_config(),
             content=self.config_editor.value or "",
         )
-        self.status.value = f"Saved {relative}."
 
     async def _install_profile(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.Button]
@@ -351,26 +267,7 @@ class WebControllerView:
         await self._perform(action=self._install_profile_action)
 
     async def _install_profile_action(self) -> None:
-        self._require_approved()
-        if self._draft is None or self._imported is None:
-            raise ProfileImportError("Prepare a profile draft first.")
-        profile_id = self._validated_profile_id()
-        bundles = self._context.data_root / "controller-bundles"
-        bundle = bundles / f"{profile_id}.mdp-profile"
-        manifest = await asyncio.to_thread(
-            self._context.workspace.create_bundle,
-            profile=self._draft,
-            profile_name=profile_id,
-            source_mods=(mod.dependency for mod in self._imported.mods),
-            destination=bundle,
-        )
-        installed_name = await self._context.runtime.install_profile(
-            profile_id=profile_id,
-            bundle=bundle.read_bytes(),
-        )
-        self.status.value = f"Installed {installed_name}: {len(manifest.files)} verified files."
-        shutil.rmtree(self._draft)
-        self._draft = None
+        await self._controller.install_profile(profile_id=self.profile_id.value or "")
 
     async def _launch(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.Button]
@@ -378,26 +275,17 @@ class WebControllerView:
         await self._perform(action=self._launch_action)
 
     async def _launch_action(self) -> None:
-        self._require_approved()
-        spec = InstanceSpec(
+        spec = await self._controller.launch(
             name=self.instance_name.value or "",
-            profile_id=self._validated_profile_id(),
-            debugger_port=int(self.debugger_port.value or ""),
+            profile_id=self.profile_id.value or "",
+            debugger_port=self.debugger_port.value or "",
         )
-        await self._context.runtime.launch(spec=spec)
-        await self._refresh_action()
         self._increment_instance_fields(spec=spec)
 
     async def _refresh(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.OutlinedButton]
     ) -> None:
-        await self._perform(action=self._refresh_action)
-
-    async def _refresh_action(self) -> None:
-        self._require_approved()
-        snapshots = await self._context.runtime.list_instances()
-        self.instances.controls = [self._instance_row(snapshot=item) for item in snapshots]
-        self.status.value = f"Loaded {len(snapshots)} instance records."
+        await self._perform(action=self._controller.refresh_instances)
 
     def _instance_row(self, *, snapshot: InstanceSnapshot) -> ft.Control:
         color = (
@@ -433,9 +321,11 @@ class WebControllerView:
     def _capture_handler(self, *, instance_id: str) -> Callable[[], Awaitable[None]]:
         async def handler() -> None:
             async def action() -> None:
-                path = await self._context.runtime.capture(instance_id=instance_id)
-                await self._picker.save_file(file_name=path.name, src_bytes=path.read_bytes())
-                self.status.value = f"Downloaded screenshot {path.name}."
+                artifact = await self._controller.capture(instance_id=instance_id)
+                await self._picker.save_file(
+                    file_name=artifact.name,
+                    src_bytes=artifact.content,
+                )
 
             await self._perform(action=action)
 
@@ -444,8 +334,7 @@ class WebControllerView:
     def _stop_handler(self, *, instance_id: str) -> Callable[[], Awaitable[None]]:
         async def handler() -> None:
             async def action() -> None:
-                await self._context.runtime.stop(instance_id=instance_id)
-                await self._refresh_action()
+                await self._controller.stop_instance(instance_id=instance_id)
 
             await self._perform(action=action)
 
@@ -456,28 +345,16 @@ class WebControllerView:
         self._page.update()
         try:
             await action()
-        except (AuthenticationError, ProfileImportError, OSError, ValueError) as error:
-            self.status.value = str(error)
+        except (OSError, ValueError) as error:
+            self._controller.fail(message=str(error))
         finally:
             self.busy.visible = False
-            self._page.update()
+            self._render_and_update()
 
-    def _require_approved(self) -> None:
-        if not self._approved:
-            raise AuthenticationError("This browser session is not approved.")
-
-    def _validated_profile_id(self) -> str:
-        value = (self.profile_id.value or "").strip()
-        if _SAFE_ID.fullmatch(value) is None:
-            raise ProfileImportError(
-                "Profile ID must use letters, numbers, dot, hyphen, or underscore."
-            )
-        return value
-
-    def _selected_config(self) -> tuple[Path, str]:
-        if self._draft is None or not self.config_selector.value:
-            raise ProfileImportError("Select a configuration file.")
-        return self._draft, self.config_selector.value
+    def _selected_config(self) -> str:
+        if not self.config_selector.value:
+            raise ValueError("Select a configuration file.")
+        return self.config_selector.value
 
     def _increment_instance_fields(self, *, spec: InstanceSpec) -> None:
         match = re.search(r"(\d+)$", spec.name)
@@ -486,11 +363,42 @@ class WebControllerView:
             self.instance_name.value = spec.name[: match.start(1)] + str(number)
         self.debugger_port.value = str(spec.debugger_port + 1)
 
+    def _render(self) -> None:
+        state = self._controller.state
+        self.status.value = state.status
+        self.config_selector.options = [
+            ft.DropdownOption(key=relative, text=Path(relative).name)
+            for relative in state.config_files
+        ]
+        self.config_editor.value = state.config_content
+        self.instances.controls = [self._instance_row(snapshot=item) for item in state.instances]
+        for control in self._privileged_controls:
+            control.disabled = not state.approved
+        configs_available = state.approved and bool(state.config_files)
+        self.config_selector.disabled = not configs_available
+        self.config_editor.disabled = not configs_available
 
-async def configure_web_controller(page: ft.Page, *, context: WebControllerContext) -> None:  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
+    def _render_and_update(self) -> None:
+        self._render()
+        self._page.update()
+
+
+async def configure_web_controller(  # noqa: PLR0917 -- keyword-only-exception: Flet callback ABI.
+    page: ft.Page,
+    *,
+    controller: BrowserController,
+) -> None:
     """Configure and mount one browser controller page."""
     page.title = "ModDebugPilot Controller"
     page.theme = ft.Theme(color_scheme_seed=ft.Colors.BLUE_700, use_material3=True)
     page.padding = 0
-    view = WebControllerView(page=page, context=context)
+    view = WebControllerView(page=page, controller=controller)
+
+    async def close_view(  # keyword-only-exception: Flet invokes page callbacks positionally.
+        _event: ft.Event[ft.Page],
+    ) -> None:
+        await view.close()
+
+    page.on_close = close_view
+    page.on_disconnect = close_view
     page.add(view.build())

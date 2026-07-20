@@ -1,43 +1,31 @@
-"""Immutable state rendered by the Flet adapter."""
+"""Immutable presentation state for both Flet surfaces."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-from mod_debug_pilot.domain.models import JobKind, JobResult, PilotConfig
-
-
-class AppPhase(StrEnum):
-    """Mutually exclusive application presentation phases."""
-
-    LOADING = "loading"
-    READY = "ready"
-    SAVING = "saving"
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELED = "canceled"
-    CLOSED = "closed"
+from mod_debug_pilot.domain import AgentSettings, InstanceSnapshot, PairingRequest
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class AppState:
-    """One coherent UI snapshot."""
+class AgentViewState:
+    """Complete render state for the native Agent window."""
 
-    phase: AppPhase
-    config: PilotConfig
-    message: str
-    field_errors: dict[str, str]
-    active_job: JobKind | None = None
-    latest_result: JobResult | None = None
+    settings: AgentSettings
+    running: bool = False
+    status: str = "Controller listener stopped."
+    controller_url: str = "Controller URL: listener stopped"
+    pairing_code: str = "Pairing code: closed"
+    pending: tuple[PairingRequest, ...] = ()
+    instances: tuple[InstanceSnapshot, ...] = ()
 
-    @classmethod
-    def initial(cls) -> AppState:
-        """Return the state displayed before loading persistence."""
-        return cls(
-            phase=AppPhase.LOADING,
-            config=PilotConfig.defaults(),
-            message="Loading configuration…",
-            field_errors={},
-        )
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BrowserViewState:
+    """Complete render state for one browser Controller session."""
+
+    approved: bool = False
+    status: str = "Enter the Agent-displayed pairing code."
+    config_files: tuple[str, ...] = ()
+    config_content: str = ""
+    instances: tuple[InstanceSnapshot, ...] = ()

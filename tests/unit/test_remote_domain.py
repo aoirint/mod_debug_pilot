@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock, patch
-
 import pytest
 
 from mod_debug_pilot.domain import (
@@ -14,10 +12,8 @@ from mod_debug_pilot.domain import (
     InstanceSpec,
     InstanceStatus,
     RemoteValidationError,
-    normalize_fingerprint,
 )
 
-_DEFAULT_API_PORT = 48950
 _DEFAULT_WEB_PORT = 48951
 
 
@@ -26,7 +22,6 @@ def agent_values() -> dict[str, object]:
     return {
         "agent_name": "lab-agent",
         "bind_host": "127.0.0.1",
-        "api_port": "48950",
         "web_port": 48951,
         "game_executable": r"C:\Game\Lethal Company.exe",
         "data_root": r"C:\MDP\data",
@@ -40,7 +35,6 @@ def test_agent_settings_round_trip_and_defaults() -> None:
     settings = AgentSettings.from_mapping(value=agent_values())
 
     assert settings.agent_name == "lab-agent"
-    assert settings.api_port == _DEFAULT_API_PORT
     assert settings.to_mapping()["schema_version"] == 1
     assert AgentSettings().web_port == _DEFAULT_WEB_PORT
 
@@ -52,9 +46,8 @@ def test_agent_settings_round_trip_and_defaults() -> None:
         {**agent_values(), "agent_name": ""},
         {**agent_values(), "agent_name": 3},
         {**agent_values(), "agent_name": "x" * 4097},
-        {**agent_values(), "api_port": "bad"},
-        {**agent_values(), "api_port": 80},
-        {**agent_values(), "web_port": 48950},
+        {**agent_values(), "web_port": "bad"},
+        {**agent_values(), "web_port": 80},
     ],
 )
 def test_agent_settings_reject_invalid_values(*, mutation: object) -> None:
@@ -177,21 +170,3 @@ def test_invalid_instance_wire_values() -> None:
     ):
         with pytest.raises(RemoteValidationError):
             InstanceSnapshot.from_mapping(value=value)
-
-
-def test_fingerprint_normalization() -> None:
-    """Compact or colon-separated SHA-256 fingerprints normalize identically."""
-    compact = "ab" * 32
-    normalized = ":".join(["AB"] * 32)
-    assert normalize_fingerprint(value=compact) == normalized
-    assert normalize_fingerprint(value=normalized) == normalized
-    for value in ("", "GG" * 32, "AA" * 31):
-        with pytest.raises(RemoteValidationError):
-            normalize_fingerprint(value=value)
-    with (
-        patch(
-            "mod_debug_pilot.domain.remote._FINGERPRINT", Mock(fullmatch=Mock(return_value=None))
-        ),
-        pytest.raises(RemoteValidationError),
-    ):
-        normalize_fingerprint(value=compact)

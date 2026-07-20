@@ -1,5 +1,1 @@
-"""Flet control adapter."""
-
-from mod_debug_pilot.ui.app import PilotView, configure_page
-
-__all__ = ["PilotView", "configure_page"]
+"""Flet adapters for the native Agent and browser Controller."""

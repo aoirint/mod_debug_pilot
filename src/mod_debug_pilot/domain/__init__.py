@@ -1,13 +1,7 @@
 """Framework-independent domain values."""
 
-from mod_debug_pilot.domain.models import (
-    JobKind,
-    JobOutcome,
-    JobRequest,
-    JobResult,
-    PilotConfig,
-    ValidationError,
-)
+from mod_debug_pilot.domain.pairing import PairingError, PairingRequest
+from mod_debug_pilot.domain.profiles import ImportedProfile, ProfileError, ThunderstoreMod
 from mod_debug_pilot.domain.remote import (
     AgentSettings,
     BundleManifest,
@@ -16,22 +10,19 @@ from mod_debug_pilot.domain.remote import (
     InstanceSpec,
     InstanceStatus,
     RemoteValidationError,
-    normalize_fingerprint,
 )
 
 __all__ = [
     "AgentSettings",
     "BundleManifest",
     "FileRecord",
+    "ImportedProfile",
     "InstanceSnapshot",
     "InstanceSpec",
     "InstanceStatus",
-    "JobKind",
-    "JobOutcome",
-    "JobRequest",
-    "JobResult",
-    "PilotConfig",
+    "PairingError",
+    "PairingRequest",
+    "ProfileError",
     "RemoteValidationError",
-    "ValidationError",
-    "normalize_fingerprint",
+    "ThunderstoreMod",
 ]

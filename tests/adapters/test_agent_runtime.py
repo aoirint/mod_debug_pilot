@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from mod_debug_pilot.domain import InstanceSpec, InstanceStatus
+from mod_debug_pilot.domain import InstanceSpec, InstanceStatus, ProfileError
 from mod_debug_pilot.infrastructure.agent_runtime import (
     AgentRuntimeConfig,
     AgentRuntimeError,
@@ -25,7 +25,7 @@ from mod_debug_pilot.infrastructure.agent_runtime import (
     _file_contains,
     _safe_identifier,
 )
-from mod_debug_pilot.infrastructure.profiles import ProfileImportError, ProfileWorkspace
+from mod_debug_pilot.infrastructure.profiles import ProfileWorkspace
 from mod_debug_pilot.infrastructure.runner import RunningProcess
 
 
@@ -385,12 +385,12 @@ def test_runtime_install_and_lookup_rejections(*, tmp_path: Path) -> None:
 
     async def run() -> None:
         runtime, _, config = make_runtime(tmp_path=tmp_path)
-        with pytest.raises(ProfileImportError, match="large"):
+        with pytest.raises(ProfileError, match="large"):
             await runtime.install_profile(
                 profile_id="p",
                 bundle=b"x" * (config.max_upload_bytes + 1),
             )
-        with pytest.raises(ProfileImportError, match="identifier"):
+        with pytest.raises(ProfileError, match="identifier"):
             await runtime.install_profile(profile_id="../p", bundle=b"x")
         with pytest.raises(AgentRuntimeError, match="installed"):
             await runtime.launch(spec=InstanceSpec(name="x", profile_id="missing"))

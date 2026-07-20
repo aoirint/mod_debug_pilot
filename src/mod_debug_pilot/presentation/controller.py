@@ -1,216 +1,202 @@
-"""Lifecycle owner for application state and asynchronous jobs."""
+"""Flet-free controllers that own visible state transitions."""
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable
-from contextlib import suppress
+from collections.abc import Mapping
 from dataclasses import replace
 
-from mod_debug_pilot.application.services import JobService, SettingsService
-from mod_debug_pilot.domain.models import JobKind, JobOutcome, ValidationError
-from mod_debug_pilot.presentation.models import AppPhase, AppState
+from mod_debug_pilot.application.ports import AgentHost
+from mod_debug_pilot.application.services import BrowserSession, DownloadedArtifact
+from mod_debug_pilot.domain import AgentSettings, InstanceSpec
+from mod_debug_pilot.presentation.models import AgentViewState, BrowserViewState
 
-StateListener = Callable[[AppState], None]
 
+class AgentController:
+    """Own native Agent state and delegate effects to one host port."""
 
-class AppController:
-    """Own UI state, one active task, cancellation, and stale-result rejection."""
+    def __init__(self, *, host: AgentHost) -> None:
+        """Initialize from the host's persisted non-secret settings."""
+        self._host = host
+        self.state = AgentViewState(settings=host.load_settings())
 
-    def __init__(self, *, settings: SettingsService, jobs: JobService) -> None:
-        """Create an inactive page-session controller."""
-        self._settings = settings
-        self._jobs = jobs
-        self._state = AppState.initial()
-        self._listeners: list[StateListener] = []
-        self._active_task: asyncio.Task[None] | None = None
-        self._generation = 0
-        self._closed = False
-
-    @property
-    def state(self) -> AppState:
-        """Return the latest immutable state."""
-        return self._state
-
-    def subscribe(self, *, listener: StateListener) -> Callable[[], None]:
-        """Register a renderer and return an idempotent unsubscribe callback."""
-        self._listeners.append(listener)
-        listener(self._state)
-        subscribed = True
-
-        def unsubscribe() -> None:
-            nonlocal subscribed
-            if subscribed:
-                self._listeners.remove(listener)
-                subscribed = False
-
-        return unsubscribe
-
-    async def initialize(self) -> None:
-        """Load configuration once for the page session."""
-        if self._closed:
-            return
-        try:
-            config = await self._settings.load()
-        except (OSError, ValidationError):
-            self._commit(
-                state=replace(
-                    self._state,
-                    phase=AppPhase.FAILED,
-                    message="Saved configuration could not be loaded. Review or reset it.",
-                ),
-            )
-            return
-        self._commit(
-            state=replace(
-                self._state,
-                phase=AppPhase.READY,
-                config=config,
-                message="Ready. Validate the workstation before running a test.",
-                field_errors={},
-            ),
+    async def start(self, *, values: Mapping[str, object]) -> None:
+        """Validate settings and start the sole browser control plane."""
+        settings = AgentSettings.from_mapping(value=dict(values))
+        url = await self._host.start(settings=settings)
+        self.state = AgentViewState(
+            settings=settings,
+            running=True,
+            status="Trusted-LAN HTTP controller is running.",
+            controller_url=f"Controller URL: {url}",
         )
 
-    async def save_settings(self, *, values: dict[str, object]) -> bool:
-        """Validate and persist one form submission."""
-        if self._closed or self._active_task is not None:
-            return False
-        self._commit(state=replace(self._state, phase=AppPhase.SAVING, message="Saving…"))
-        try:
-            config = await self._settings.save(values=values)
-        except ValidationError as error:
-            self._commit(
-                state=replace(
-                    self._state,
-                    phase=AppPhase.FAILED,
-                    message="Correct the highlighted settings.",
-                    field_errors=error.errors,
-                ),
-            )
-            return False
-        except OSError:
-            self._commit(
-                state=replace(
-                    self._state,
-                    phase=AppPhase.FAILED,
-                    message="Configuration could not be saved.",
-                    field_errors={},
-                ),
-            )
-            return False
-        self._commit(
-            state=replace(
-                self._state,
-                phase=AppPhase.READY,
-                config=config,
-                message="Configuration saved.",
-                field_errors={},
-            ),
+    async def stop(self) -> None:
+        """Stop the host and restore workstation state."""
+        await self._host.stop()
+        self.state = AgentViewState(
+            settings=self.state.settings,
+            status="Controller stopped; game bootstrap and normal saves restored.",
         )
-        return True
 
-    def start_job(self, *, kind: JobKind) -> bool:
-        """Start one owned task without blocking the Flet event handler."""
-        if self._closed or self._active_task is not None:
-            return False
-        self._generation += 1
-        generation = self._generation
-        self._commit(
-            state=replace(
-                self._state,
-                phase=AppPhase.RUNNING,
-                message=f"Running {kind.value}…",
-                active_job=kind,
-                field_errors={},
-            ),
+    def open_pairing(self) -> None:
+        """Open and expose one short-lived pairing code."""
+        code = self._host.open_pairing()
+        self.state = replace(
+            self.state,
+            pairing_code=f"Pairing code: {code} (valid for 10 minutes, one use)",
         )
-        self._active_task = asyncio.create_task(
-            self._run_job(kind=kind, generation=generation),
-            name=f"moddebugpilot:{kind.value}:{generation}",
-        )
-        return True
 
-    async def cancel_active(self) -> bool:
-        """Cancel and await the active task, then publish a truthful state."""
-        task = self._active_task
-        if task is None:
-            return False
-        self._generation += 1
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-        self._commit(
-            state=replace(
-                self._state,
-                phase=AppPhase.CANCELED,
-                message="Job canceled. Partial artifacts were preserved.",
-                active_job=None,
-            ),
-        )
-        return True
+    def refresh_pairings(self) -> None:
+        """Refresh pending browser sessions."""
+        self.state = replace(self.state, pending=self._host.pending_pairings())
 
-    async def wait_for_idle(self) -> None:
-        """Await the currently active job for tests and orderly shutdown."""
-        task = self._active_task
-        if task is not None:
-            await task
+    def decide_pairing(self, *, request_id: str, controller_name: str, approve: bool) -> None:
+        """Apply and display one local operator decision."""
+        self._host.decide_pairing(request_id=request_id, approve=approve)
+        self.state = replace(
+            self.state,
+            pending=self._host.pending_pairings(),
+            status=f"{'Approved' if approve else 'Rejected'} {controller_name}.",
+        )
+
+    async def refresh_instances(self) -> None:
+        """Refresh the native recovery view of tracked instances."""
+        self.state = replace(self.state, instances=await self._host.list_instances())
+
+    async def stop_instance(self, *, instance_id: str) -> None:
+        """Stop one instance and refresh state."""
+        await self._host.stop_instance(instance_id=instance_id)
+        await self.refresh_instances()
 
     async def close(self) -> None:
-        """Cancel owned work and close the controller exactly once."""
-        if self._closed:
-            return
-        await self.cancel_active()
-        self._closed = True
-        self._commit(
-            state=replace(
-                self._state,
-                phase=AppPhase.CLOSED,
-                message="Closed.",
-                active_job=None,
+        """Idempotently close the owned host."""
+        await self._host.stop()
+
+    def fail(self, *, message: str) -> None:
+        """Expose one bounded operation error."""
+        self.state = replace(self.state, status=message)
+
+
+class BrowserController:
+    """Own one browser session's view state and workflows."""
+
+    def __init__(self, *, session: BrowserSession) -> None:
+        """Create an unauthorized Controller view."""
+        self._session = session
+        self.state = BrowserViewState()
+
+    def request_pairing(self, *, code: str, controller_name: str) -> None:
+        """Submit a connection request for local approval."""
+        self._session.request_pairing(code=code, controller_name=controller_name)
+        self.state = replace(
+            self.state,
+            status="Connection requested. Approve it in the Agent native GUI.",
+        )
+
+    def check_pairing(self) -> None:
+        """Refresh the local operator's decision."""
+        decision = self._session.check_pairing()
+        if decision is None:
+            status = "Still waiting for Agent approval."
+        elif decision:
+            status = "Approved. This browser session can now control the Agent."
+        else:
+            status = "The Agent operator rejected this session."
+        self.state = replace(self.state, approved=bool(decision), status=status)
+
+    async def prepare_profile(
+        self,
+        *,
+        profile_id: str,
+        profile_code: str,
+        local_mod_name: str,
+        local_mod_bytes: bytes,
+    ) -> None:
+        """Prepare one profile draft from user-selected inputs."""
+        draft = await self._session.prepare_profile(
+            profile_id=profile_id,
+            profile_code=profile_code,
+            local_mod_name=local_mod_name,
+            local_mod_bytes=local_mod_bytes,
+        )
+        self.state = replace(
+            self.state,
+            config_files=draft.config_files,
+            config_content="",
+            status=(
+                f"Draft prepared with {draft.declared_mods} declared mods and "
+                f"{len(draft.config_files)} configs."
             ),
         )
-        self._listeners.clear()
 
-    async def _run_job(self, *, kind: JobKind, generation: int) -> None:
-        try:
-            result = await self._jobs.run(kind=kind, config=self._state.config)
-            if generation != self._generation or self._closed:
-                return
-            phase = phase_for_outcome(outcome=result.outcome)
-            self._commit(
-                state=replace(
-                    self._state,
-                    phase=phase,
-                    message=result.message,
-                    active_job=None,
-                    latest_result=result,
-                ),
-            )
-        except asyncio.CancelledError:
-            raise
-        except OSError:
-            if generation == self._generation and not self._closed:
-                self._commit(
-                    state=replace(
-                        self._state,
-                        phase=AppPhase.FAILED,
-                        message="The runner could not complete the job.",
-                        active_job=None,
-                    ),
-                )
-        finally:
-            self._active_task = None
+    def load_config(self, *, relative: str) -> None:
+        """Load one configuration into presentation state."""
+        content = self._session.read_config(relative=relative)
+        self.state = replace(
+            self.state,
+            config_content=content,
+            status=f"Loaded {relative}.",
+        )
 
-    def _commit(self, *, state: AppState) -> None:
-        self._state = state
-        for listener in tuple(self._listeners):
-            listener(state)
+    def save_config(self, *, relative: str, content: str) -> None:
+        """Save one configuration from presentation state."""
+        self._session.write_config(relative=relative, content=content)
+        self.state = replace(
+            self.state,
+            config_content=content,
+            status=f"Saved {relative}.",
+        )
 
+    async def install_profile(self, *, profile_id: str) -> None:
+        """Install the current verified profile draft."""
+        installed = await self._session.install_profile(profile_id=profile_id)
+        self.state = replace(
+            self.state,
+            config_files=(),
+            config_content="",
+            status=f"Installed {installed.name}: {installed.file_count} verified files.",
+        )
 
-def phase_for_outcome(*, outcome: JobOutcome) -> AppPhase:
-    """Map every runner outcome to a terminal presentation phase."""
-    if outcome is JobOutcome.SUCCEEDED:
-        return AppPhase.SUCCEEDED
-    if outcome is JobOutcome.CANCELED:
-        return AppPhase.CANCELED
-    return AppPhase.FAILED
+    async def launch(
+        self,
+        *,
+        name: str,
+        profile_id: str,
+        debugger_port: str,
+    ) -> InstanceSpec:
+        """Launch one tracked instance and refresh the list."""
+        spec = await self._session.launch(
+            name=name,
+            profile_id=profile_id,
+            debugger_port=int(debugger_port),
+        )
+        await self.refresh_instances()
+        return spec
+
+    async def refresh_instances(self) -> None:
+        """Refresh all tracked instance rows."""
+        instances = await self._session.list_instances()
+        self.state = replace(
+            self.state,
+            instances=instances,
+            status=f"Loaded {len(instances)} instance records.",
+        )
+
+    async def stop_instance(self, *, instance_id: str) -> None:
+        """Stop one tracked instance and refresh the list."""
+        await self._session.stop(instance_id=instance_id)
+        await self.refresh_instances()
+
+    async def capture(self, *, instance_id: str) -> DownloadedArtifact:
+        """Capture one screenshot for browser download."""
+        artifact = await self._session.capture(instance_id=instance_id)
+        self.state = replace(self.state, status=f"Downloaded screenshot {artifact.name}.")
+        return artifact
+
+    async def close(self) -> None:
+        """Discard this page session's unfinished profile draft."""
+        await self._session.close()
+
+    def fail(self, *, message: str) -> None:
+        """Expose one bounded operation error."""
+        self.state = replace(self.state, status=message)
