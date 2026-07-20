@@ -15,3 +15,8 @@ firewall/antivirus disabling are outside the supported boundary.
 Local configuration must not contain Steam passwords, SSH private keys, API
 tokens, or other secrets. Test machines should use a dedicated, non-admin user
 on an isolated LAN segment.
+
+Screenshots contain the complete primary display. Disable notifications and
+close unrelated applications before a test. ModDebugPilot filters the inherited
+game-process environment, but artifact paths and logs can still reveal local
+project names; review artifacts before sharing them.

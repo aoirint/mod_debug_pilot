@@ -18,6 +18,8 @@ uv run --locked ruff format --check .
 uv run --locked mypy src tests
 uv run --locked pytest
 uv build
+actionlint .github/workflows/ci.yml
+pinact run --check --min-age 7
 ```
 
 These commands must not update `uv.lock`. Delete `.venv` and repeat the exact
@@ -26,5 +28,9 @@ profiles, runs, and artifacts are disposable and ignored by Git.
 
 Windows packaging and signing remain blocked until product identifiers,
 certificate ownership, and release channels are selected.
+
+The expected test result is 100% statement and branch coverage. Inspect the
+wheel and sdist after `uv build`; neither artifact should contain tests, local
+settings, credentials, caches, or generated run data.
 
 Update this runbook when Python, uv, quality gates, or packaging policy changes.

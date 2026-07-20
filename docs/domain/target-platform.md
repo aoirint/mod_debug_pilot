@@ -1,23 +1,31 @@
 # Target platform
 
-## Scope
+## Verified scope
 
-The initial target is a Windows 11 x64 interactive desktop session, Python
-3.12, Flet 0.85.x or 0.86.x subject to the seven-day dependency cooldown, and
-BepInEx 5 Mono profiles supplied by the user.
+The source and semantic UI tests are verified on Windows 11 x64 with CPython
+3.12.13, Flet 0.85.3, and Pillow 12.3.0. The product target is a logged-in
+Windows 11 desktop session running a Unity game through a user-supplied BepInEx
+5 Mono profile.
 
-Flet provides the desktop UI and exposes packaged application storage through
-`FLET_APP_STORAGE_DATA`. Pillow provides primary-display capture. BepInEx and
-game binaries are never downloaded by the application.
+Flet supplies the desktop UI and packaged application-data path. Pillow's
+`ImageGrab` captures the primary display. BepInEx and game binaries are never
+downloaded by the application.
 
 ## Integration constraints
 
-- A game requiring graphics must run in the logged-in console session.
-- The display resolution and DPI should remain fixed during image-based tests.
-- A prepared BepInEx base profile must contain the expected Doorstop and
-  `BepInEx` files before a run starts.
-- ModDebugPilot may copy user-selected local files but does not accept remote
-  archive URLs.
+- The game must run in the interactive console session.
+- Resolution, DPI, game build, base profile, and mod build should remain fixed.
+- The base profile must contain Doorstop and the BepInEx preloader before a run.
+- The configured ready marker must appear in `BepInEx/LogOutput.log`.
+- The primary display must remain available; an EDID emulator may be required
+  on a headless test workstation.
+- RDP connection changes can alter display, focus, capture, and GPU behavior.
 
-Update this document when the supported Python/Flet range, OS, capture method,
-or BepInEx generation changes.
+## Evidence
+
+The Python and Flet targets are declared in `pyproject.toml`, `.python-version`,
+and `uv.lock`. The BepInEx file contract and Unity launch arguments are enforced
+by `infrastructure/runner.py` and exercised with offline adapter tests.
+
+Update this document when the Python/Flet range, OS target, capture method,
+BepInEx generation, or Unity launch contract changes.

@@ -6,3 +6,10 @@ the complete procedure in [the development runbook](docs/operations/development.
 Keep domain, application, and presentation modules independent of Flet. New
 external effects require a typed application port, an infrastructure adapter,
 offline tests, and a security review.
+
+GitHub Actions changes must also pass:
+
+```powershell
+actionlint .github/workflows/ci.yml
+pinact run --check --min-age 7
+```
