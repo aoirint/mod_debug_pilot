@@ -33,6 +33,13 @@ jobs:
           python-version-file: .python-version
           version: "0.11.21"
 
+      - name: Install locked .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: helpers/**/packages.lock.json
+
       - name: Verify lockfile
         run: uv lock --check
 
@@ -50,6 +57,29 @@ jobs:
 
       - name: Test with full coverage
         run: uv run --locked pytest
+
+      - name: Restore locked save redirector dependencies
+        run: dotnet restore ModDebugPilot.slnx --locked-mode
+
+      - name: Check save redirector formatting
+        run: dotnet format ModDebugPilot.slnx --no-restore --verify-no-changes
+
+      - name: Build save redirector with warnings as errors
+        run: dotnet build ModDebugPilot.slnx --configuration Release --no-restore --warnaserror
+
+      - name: Test save path confinement
+        run: >-
+          dotnet run --project helpers/ModDebugPilot.SaveRedirector.Tests
+          --configuration Release --no-build
+
+      - name: Verify embedded save redirector
+        shell: pwsh
+        run: |
+          $built = (Get-FileHash -Algorithm SHA256 helpers/ModDebugPilot.SaveRedirector/bin/Release/netstandard2.1/com.aoirint.ModDebugPilot.SaveRedirector.dll).Hash
+          $embedded = (Get-FileHash -Algorithm SHA256 src/mod_debug_pilot/assets/ModDebugPilot.SaveRedirector.dll).Hash
+          if ($built -ne $embedded) {
+            throw "Embedded save redirector differs from the locked Release build."
+          }
 
       - name: Build source and wheel distributions
         run: uv build
