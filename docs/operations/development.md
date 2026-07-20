@@ -29,8 +29,10 @@ profiles, runs, and artifacts are disposable and ignored by Git.
 Windows packaging and signing remain blocked until product identifiers,
 certificate ownership, and release channels are selected.
 
-The expected test result is 100% statement and branch coverage. Inspect the
-wheel and sdist after `uv build`; neither artifact should contain tests, local
-settings, credentials, caches, or generated run data.
+The expected test result is 100% statement and branch coverage. Inspect both
+artifacts after `uv build`. The wheel must not contain tests, local settings,
+credentials, caches, or generated run data. The sdist intentionally contains
+source tests and developer documentation, but must exclude local settings,
+credentials, caches, generated run data, and source-control metadata.
 
 Update this runbook when Python, uv, quality gates, or packaging policy changes.
