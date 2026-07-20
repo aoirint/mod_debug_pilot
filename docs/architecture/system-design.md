@@ -8,7 +8,7 @@ This design depends on the [target platform](../domain/target-platform.md),
 
 ```text
 Controller browser                         Windows test workstation
-┌─────────────────────┐   HTTPS/TLS       ┌──────────────────────────────┐
+┌─────────────────────┐   trusted-LAN HTTP┌──────────────────────────────┐
 │ Flet Web session    │◄─────────────────►│ Native ModDebugPilot Agent   │
 │ Profile Code + DLL  │                   │ ├─ Flet Web host             │
 │ Config editor       │                   │ ├─ pairing approval          │
@@ -22,13 +22,18 @@ Controller browser                         Windows test workstation
 ```
 
 The controller has no Python process, local profile directory, key file, or
-package cache. The browser uploads the selected DLL into its TLS-protected Flet
-session. Server-side controller handlers share Agent-owned services; they do not
-give browser JavaScript filesystem or process access.
+package cache. The browser uploads the selected DLL into its Flet session.
+Server-side controller handlers share Agent-owned services; they do not give
+browser JavaScript filesystem or process access. Browser traffic is not
+encrypted, so the HTTP route is permitted only inside a trusted,
+firewall-restricted private LAN.
 
 The separate API on port 48950 is reserved for approved Ed25519 controller
 identities. Both surfaces expose structured operations only. The native Agent
 owns listener start/stop, pairing decisions, recovery, and task termination.
+The API retains pinned TLS and signed requests; the Web session instead relies
+on its restricted LAN path, exact Host/Origin validation, single-use pairing,
+and local approval.
 
 ## Profile workflow
 

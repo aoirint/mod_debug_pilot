@@ -12,6 +12,11 @@ The Agent starts both listeners only after a native-window action. Keep RDP for
 maintenance because connection changes can alter display, focus, capture, GPU,
 and controller behavior.
 
+Allow TCP 48951 only from the browser controller's LAN address. That Flet Web
+connection is HTTP and therefore unencrypted. TCP 48950 is the separately
+pinned-TLS automation API. Neither port should be forwarded by the router or
+exposed to a guest/shared network.
+
 ## Filesystem boundaries
 
 - The game directory is modified only for journaled `winhttp.dll` and

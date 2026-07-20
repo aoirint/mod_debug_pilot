@@ -4,17 +4,22 @@
 
 1. Start `moddebugpilot-agent` in the logged-in console session.
 2. Verify all paths and restrict the bind address or firewall as required.
-3. Enter the TLS-key passphrase and select **Start secure listeners**.
-4. Open the displayed HTTPS Controller URL. Compare the browser certificate's
-   SHA-256 fingerprint with the native Agent value before accepting it.
+3. Enter the automation API TLS-key passphrase and select **Start LAN listeners**.
+4. Confirm Windows Firewall permits port 48951 only from the intended controller,
+   then open the displayed HTTP Controller URL. No certificate warning is used.
 5. Select **Open pairing window** in the Agent.
-6. Submit the six-digit code and a recognizable controller name in the browser.
+6. Submit the eight-digit code and a recognizable controller name in the browser.
 7. Refresh native pending requests, compare the name and controller ID, and
    approve only the expected request.
 
-A code expires after ten minutes and one request consumes it. Rejection does not
-authorize the browser session. Restart pairing with a new code if any displayed
-identity is unexpected.
+A code expires after ten minutes, one valid request consumes it, and five wrong
+guesses close the window. Rejection does not authorize the browser session and
+an approved Web key is not persisted. Restart pairing with a new code if any
+displayed identity is unexpected.
+
+The HTTP session exposes uploaded DLL/config bytes and downloaded screenshots to
+the LAN path. Stop if the network is shared or untrusted; use the pinned signed
+automation API or add a separately managed trusted TLS reverse proxy instead.
 
 ## Prepare and run
 

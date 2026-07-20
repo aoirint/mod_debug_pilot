@@ -16,15 +16,17 @@ Local configuration must not contain Steam passwords, SSH private keys, API
 tokens, or other secrets. Test machines should use a dedicated, non-admin user
 on an isolated LAN segment.
 
-The Agent listeners are operator-started and use TLS, but the certificate is
-self-signed. Compare its SHA-256 fingerprint in the browser with the native
-Agent display before approving a controller. Restrict the default all-interface
-bind with Windows Firewall or a dedicated test VLAN. Pairing approval does not
-make an untrusted LAN safe.
+The Agent listeners are operator-started. The browser controller intentionally
+uses plain HTTP; its Host/Origin checks and local pairing approval are
+authorization boundaries, not encryption or protection against an on-path LAN
+attacker. Restrict port 48951 to the exact controller address with Windows
+Firewall or a dedicated test VLAN. Pairing approval does not make an untrusted
+LAN safe. Do not expose either listener to the public Internet.
 
 Automation requests require approved Ed25519 keys, fresh timestamps, unique
-nonces, and body-bound signatures. The Agent-hosted Web controller uses an
-approved server-side page session. Neither surface exposes arbitrary commands.
+nonces, body-bound signatures, and a pinned self-signed TLS certificate. The
+Agent-hosted Web controller uses an approved, non-persistent server-side page
+session. Neither surface exposes arbitrary commands.
 
 Thunderstore mods and the uploaded local DLL execute in the game process and
 must be treated as code with the test user's authority. Profile validation

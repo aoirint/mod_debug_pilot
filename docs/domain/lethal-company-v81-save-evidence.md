@@ -51,6 +51,38 @@ References:
 - [Unity `Application.persistentDataPath`](https://docs.unity3d.com/ja/2020.3/ScriptReference/Application-persistentDataPath.html)
 - [Unity Player command-line arguments](https://docs.unity3d.com/ja/current/Manual/PlayerCommandLineArguments.html)
 
+## LCBetterSaves 1.7.3 compatibility evidence
+
+The official `Pooble-LCBetterSaves-1.7.3` Thunderstore package was downloaded as
+evidence and inspected without executing its DLL. The package ZIP SHA-256 is
+`502C75B79C3A89CCCE484893DF020ADCDB8EADE9D3A10EA39F74110EFE77B5A6` and the
+contained plugin DLL SHA-256 is
+`659694A858A91C96BF007224A4812A6CC8EFA299A44AB23D607037963343D911`.
+Its manifest depends on `BepInEx-BepInExPack-5.4.2100`.
+
+Mono.Cecil inspection establishes these direct static calls and path families:
+
+- save enumeration calls `ES3.GetFiles()` and filters `LCSaveFile` followed by a
+  numeric slot;
+- normalization calls `ES3.FileExists` and `ES3.RenameFile`, using `TempFileN`
+  and `LGUTempFileN` while also handling `LGU_N.json`;
+- the alias UI reads and writes `Alias_BetterSaves` through `ES3.Load` and
+  `ES3.Save` in the selected `LCSaveFileN`; and
+- deletion calls `ES3.DeleteFile` for both `LCSaveFileN` and `LGU_N.json`.
+
+In the supplied v81 ES3 implementation, `GetFiles`, `FileExists`, `RenameFile`,
+`Load`, `Save`, and `DeleteFile` all resolve their file operation through
+`ES3Settings.FullPath`. The redirector therefore covers LCBetterSaves' normal,
+auxiliary, and rename-temporary paths at the same getter boundary. The helper
+test pins representative paths for every family to one confined instance root.
+The outer directory transaction also moves the complete normal persistent-data
+directory rather than selecting only the vanilla three slots.
+
+This closes the static and path-policy evidence for
+[LCBetterSaves 1.7.3](https://thunderstore.io/c/lethal-company/p/Pooble/LCBetterSaves/versions/).
+It does not replace a live v81 launch that creates, renames, loads, and deletes
+an extra slot with both plugins installed.
+
 ## Integration consequence
 
 `ModDebugPilot.SaveRedirector` patches the `ES3Settings.FullPath` getter. It

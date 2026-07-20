@@ -1,23 +1,31 @@
 # Remote security
 
-## Trust establishment
+## Browser trust establishment
 
-The native Agent creates one self-signed RSA TLS identity. Its private key is
-encrypted with an operator-entered passphrase that is never persisted. The
-native window displays the SHA-256 certificate fingerprint and controller URL.
-The operator must compare that fingerprint with the browser certificate before
-accepting the self-signed certificate warning.
+The browser controller is deliberately served over HTTP. This removes browser
+certificate installation and tunnel dependencies, but provides no
+confidentiality or on-path integrity for DLL uploads, configuration,
+screenshots, or session traffic. It is supported only on a trusted private LAN
+with port 48951 restricted to the intended controller source.
 
-Pairing is explicitly opened in the native window. The six-digit code is
-single-use and expires after ten minutes. A request records the controller name,
-public-key-derived ID, and a high-entropy polling token. Only the local native
-window can approve or reject it.
+The ASGI boundary accepts only exact discovered Agent hostnames/IP addresses and
+same-origin HTTP WebSockets, reducing DNS-rebinding and cross-site initiation.
+Pairing is explicitly opened in the native window. The eight-digit code is
+single-use, expires after ten minutes, and closes after five wrong guesses. A
+request records the controller name, public-key-derived ID, and a high-entropy
+polling token. Only the local native window can approve or reject it.
 
 The Agent-hosted Flet Web session uses an in-memory Ed25519 identity and keeps
 authorization in that server-side page session. It writes no controller key to
-the browser machine. The automation API persists approved public keys only.
+the browser machine or durable Agent authorization store. The automation API
+persists approved public keys only.
 
 ## Automation API authentication
+
+The Agent creates one self-signed RSA TLS identity for the API. Its private key
+is encrypted with an operator-entered passphrase that is never persisted. API
+clients pin the certificate bytes; the fingerprint shown in the native window
+belongs to this automation surface, not the HTTP browser controller.
 
 Every protected request binds these fields into an Ed25519 signature:
 
@@ -47,7 +55,8 @@ and artifact size are bounded.
 
 ## Residual risks
 
-- A user who ignores the certificate fingerprint can approve a man-in-the-middle.
+- Any device able to observe or alter the trusted LAN path can read or tamper
+  with the HTTP browser session; use the pinned API when that risk is unacceptable.
 - The default bind address exposes both listeners on all interfaces; restrict
   access with network segmentation and Windows Firewall.
 - A locally compromised Agent user can read artifacts, modify the application,

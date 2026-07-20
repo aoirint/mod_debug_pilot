@@ -13,7 +13,7 @@ Direct runtime dependencies:
 - `cryptography` provides RSA TLS identities and Ed25519 request signatures.
 - Pillow 12.3.0 provides primary-display capture.
 - PyYAML provides safe parsing of r2modman `export.r2x` metadata.
-- Uvicorn provides the Agent-owned HTTPS ASGI listener.
+- Uvicorn provides the Agent-owned trusted-LAN HTTP ASGI listener.
 
 Direct developer dependencies are Flet CLI 0.85.3, mypy 1.20.2, pytest 9.1.1,
 pytest-cov 7.1.0, Ruff 0.14.14, and PyYAML type stubs. Flet CLI is explicit

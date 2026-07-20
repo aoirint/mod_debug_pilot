@@ -1,10 +1,10 @@
 # ModDebugPilot
 
 ModDebugPilot is a Windows test-workstation Agent for Lethal Company mod
-development. The native Agent starts an HTTPS-hosted Flet Web controller only
-when the local operator asks it to, displays the certificate fingerprint and a
-one-time pairing code, and requires local approval before a browser session can
-prepare profiles or control game instances.
+development. The native Agent starts a trusted-LAN HTTP Flet Web controller only
+when the local operator asks it to, displays a one-time pairing code, and
+requires local approval before a browser session can prepare profiles or control
+game instances. A separate pinned-TLS, signed API is available for automation.
 
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB)
 ![Flet 0.85.3](https://img.shields.io/badge/Flet-0.85.3-02569B)
@@ -47,16 +47,20 @@ uv run --locked moddebugpilot-agent
 In the native window:
 
 1. Set the game executable, Agent data, artifacts, and normal-save directory.
-2. Enter a strong passphrase. It encrypts the Agent TLS private key and is not
-   persisted.
-3. Select **Start secure listeners**.
-4. Open the displayed Controller URL in the controller browser and compare the
-   SHA-256 certificate fingerprint with the native Agent window.
+2. Enter a strong passphrase. It encrypts the automation API TLS private key and
+   is not persisted.
+3. Select **Start LAN listeners**.
+4. Open the displayed HTTP Controller URL from the trusted private LAN.
 5. Select **Open pairing window**, enter its one-time code in the browser, then
    approve the named request in the native Agent window.
 
-The certificate is self-signed, so the initial browser warning is expected.
-Do not continue if the browser certificate fingerprint does not match the Agent.
+The browser UI deliberately uses HTTP so no self-signed certificate installation
+or public tunnel is required. HTTP does **not** hide DLLs, configuration values,
+screenshots, or session traffic from another device able to observe or alter the
+LAN. Restrict port 48951 to the intended controller with Windows Firewall and use
+this mode only on a trusted private network. The automation API on port 48950
+retains certificate pinning, TLS, Ed25519 signatures, fresh timestamps, and nonce
+replay protection.
 
 The `moddebugpilot` and `moddebugpilot-agent` entry points currently launch the
 same native Agent application.
@@ -73,6 +77,11 @@ Save isolation is fail-closed: a game process must emit
 seconds or the Agent terminates it. Normal saves are also moved under a journaled
 outer transaction as defense in depth and are restored automatically after the
 last instance.
+
+The redirect boundary also covers the Easy Save 3 file families used by
+LCBetterSaves 1.7.3 (`LCSaveFileN`, `LGU_N.json`, and its rename temporaries), so
+additional slots remain inside the instance save root. This is statically and
+boundary-tested for v81; a live-game compatibility smoke test remains required.
 
 Full-display screenshots and logs can contain private information. Disable
 notifications and review artifacts before sharing them.
