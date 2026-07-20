@@ -24,3 +24,9 @@ Pull requests validate proposed source through the `Pull Request` workflow.
 The `Main` workflow re-runs those checks for the exact pushed commit before its
 Windows build and retained artifact job. Do not add manual dispatch or a
 cross-workflow polling gate without a documented diagnostic or recovery need.
+
+## Reporting security issues
+
+Use a private GitHub security advisory or another private maintainer channel
+for suspected vulnerabilities. Do not publish credentials, machine paths,
+exploit details, Steam account information, or other sensitive data.
