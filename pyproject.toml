@@ -1,0 +1,126 @@
+[project]
+name = "mod-debug-pilot"
+version = "0.1.0.dev0"
+description = "Safe, reproducible desktop automation for game mod debugging"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.13"
+authors = [
+    { name = "ModDebugPilot contributors" },
+]
+dependencies = [
+    "flet[desktop]>=0.85,<0.87",
+    "pillow>=11.3,<13",
+]
+
+[project.urls]
+Documentation = "https://github.com/aoirint/mod-debug-pilot/tree/main/docs"
+Repository = "https://github.com/aoirint/mod-debug-pilot"
+
+[project.gui-scripts]
+moddebugpilot = "mod_debug_pilot.__main__:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17,<2",
+    "pytest>=8.4,<10",
+    "pytest-cov>=6.2,<8",
+    "ruff>=0.12,<0.15",
+]
+
+[tool.uv]
+exclude-newer = "P7D"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mod_debug_pilot"]
+
+[tool.flet.app]
+path = "src"
+module = "main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "FBT",
+    "I",
+    "ANN",
+    "ARG",
+    "ASYNC",
+    "B",
+    "C4",
+    "C90",
+    "COM",
+    "D",
+    "DTZ",
+    "ERA",
+    "FLY",
+    "G",
+    "ICN",
+    "LOG",
+    "N",
+    "PERF",
+    "PIE",
+    "PL",
+    "PT",
+    "PTH",
+    "RET",
+    "RUF",
+    "S",
+    "SIM",
+    "SLF",
+    "T20",
+    "TRY",
+    "UP",
+]
+ignore = [
+    "COM812", # Ruff formatter owns trailing comma layout.
+    "D203",   # Select D211: no blank line before class docstrings.
+    "D213",   # Select D212: summary starts on the first line.
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101", # Pytest assertions are the test oracle.
+]
+
+[tool.mypy]
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+warn_unused_configs = true
+show_error_code_links = true
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "-ra",
+    "--cov=mod_debug_pilot",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    "--cov-fail-under=100",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source_pkgs = ["mod_debug_pilot"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false

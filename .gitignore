@@ -1,0 +1,34 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build and Flet-generated output
+build/
+dist/
+*.egg-info/
+
+# Local application state and secrets
+.env
+.env.*
+!.env.example
+.moddebugpilot/
+artifacts/
+profiles/
+runs/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Agent-local workspaces
+.agents/worktrees/
+.agents/references/
