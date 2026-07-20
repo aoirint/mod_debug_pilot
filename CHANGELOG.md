@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Removed
+
+- Removed the redundant `SECURITY.md`; contribution policy now owns private
+  vulnerability reporting, while architecture and operations documentation
+  remain the canonical owners of product boundaries and safe-use procedures.
+
 ### Added
 
 - Added event-owned pull-request and `main` CI workflows with direct Windows
