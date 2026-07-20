@@ -34,10 +34,10 @@ _SAVE_REDIRECT_FILE: Final = "com.aoirint.SaveRedirect.dll"
 _SAVE_REDIRECT_RELEASE: Final = {
     "schema_version": 1,
     "repository": "https://github.com/aoirint/SaveRedirect",
-    "commit": "59b2736724ffe729612f05dbf6a2899d1ebb1660",
+    "commit": "0971c4dd1c1e0d0366645674b7b6c92090fc7b7e",
     "version": "0.1.0",
     "file": _SAVE_REDIRECT_FILE,
-    "sha256": "3c061d721bd069007bd1d0c39a19792c9dbce795a2387aebbfb2983097d9ef31",
+    "sha256": "06c78e927ccd9d91904bdc0898e5243f7e70003b4068c4579ddb54f9b18edfa4",
     "plugin_guid": "com.aoirint.SaveRedirect",
     "environment_variable": "SAVE_REDIRECT_ROOT",
     "ready_marker": "[SAVEREDIRECT] ready",
