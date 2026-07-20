@@ -9,8 +9,13 @@ authors = [
     { name = "ModDebugPilot contributors" },
 ]
 dependencies = [
+    "aiohttp>=3.12,<4",
+    "cryptography>=45,<47",
     "flet[desktop]>=0.85,<0.87",
+    "flet-web>=0.85,<0.87",
     "pillow>=11.3,<13",
+    "pyyaml>=6.0.2,<7",
+    "uvicorn[standard]>=0.35,<1",
 ]
 
 [project.urls]
@@ -19,6 +24,7 @@ Repository = "https://github.com/aoirint/mod-debug-pilot"
 
 [project.gui-scripts]
 moddebugpilot = "mod_debug_pilot.__main__:main"
+moddebugpilot-agent = "mod_debug_pilot.agent_main:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]
@@ -31,6 +37,7 @@ dev = [
     "pytest>=8.4,<10",
     "pytest-cov>=6.2,<8",
     "ruff>=0.12,<0.15",
+    "types-pyyaml>=6.0.12,<7",
 ]
 
 [tool.uv]
@@ -95,6 +102,42 @@ max-complexity = 10
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S101", # Pytest assertions are the test oracle.
+]
+"src/mod_debug_pilot/domain/remote.py" = [
+    "PLR2004", # Protocol bounds are clearer beside the fields they constrain.
+    "TRY003",  # Validation messages are part of the user-facing wire contract.
+]
+"src/mod_debug_pilot/infrastructure/agent_runtime.py" = [
+    "PLR0913", # Runtime adapters are explicit constructor dependencies.
+    "PLR2004", # Resource limits are local to their guarded operating-system effect.
+    "TRY003",  # Recovery failures require precise operator-facing messages.
+    "TRY301",  # Transaction bodies deliberately raise into one rollback boundary.
+]
+"src/mod_debug_pilot/infrastructure/profiles.py" = [
+    "PLR2004", # Archive and protocol bounds are intentionally visible at each check.
+    "TRY003",  # Import errors are bounded messages returned to the UI.
+    "TRY300",  # Successful extraction returns inside the rollback scope.
+    "TRY301",  # Archive validation failures deliberately enter one cleanup boundary.
+]
+"src/mod_debug_pilot/infrastructure/remote_api.py" = [
+    "PLR2004", # HTTP status and size limits are protocol constants.
+    "TRY003",  # Remote errors are deliberately stable client-facing messages.
+    "TRY301",  # Route validation raises into the route's bounded error response.
+]
+"src/mod_debug_pilot/infrastructure/security.py" = [
+    "PLR0913", # Every signed-request component remains an explicit argument.
+    "PLR2004", # Cryptographic encoding sizes are meaningful at each validation point.
+    "TRY003",  # Authentication errors intentionally avoid low-level exception details.
+    "TRY301",  # Store parsing raises into one generic identity-error boundary.
+]
+"src/mod_debug_pilot/infrastructure/web_host.py" = [
+    "TRY003",  # Lifecycle messages are displayed directly in the native Agent UI.
+]
+"src/mod_debug_pilot/ui/agent_app.py" = [
+    "TRY003",  # UI action errors are concise operator guidance.
+]
+"src/mod_debug_pilot/ui/web_controller.py" = [
+    "TRY003",  # UI action errors are concise controller guidance.
 ]
 
 [tool.mypy]
