@@ -42,7 +42,7 @@ _ENVIRONMENT_KEYS = frozenset(
         "WINDIR",
     }
 )
-_SAVE_REDIRECT_READY = "[MODDEBUGPILOT] save_redirect_ready"
+_SAVE_REDIRECT_READY = "[SAVEREDIRECT] ready"
 _SAVE_REDIRECT_TIMEOUT_SECONDS = 30.0
 
 
@@ -381,7 +381,7 @@ class RemoteAgentRuntime:
                     "--debugger-agent=transport=dt_socket,server=y,"
                     f"address=127.0.0.1:{spec.debugger_port},embedding=1,defer=y"
                 )
-                environment["MODDEBUGPILOT_SAVE_ROOT"] = str(
+                environment["SAVE_REDIRECT_ROOT"] = str(
                     self._config.data_root / "instance-saves" / instance_id
                 )
                 process = await self._launcher.launch(

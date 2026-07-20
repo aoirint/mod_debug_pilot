@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 
 from mod_debug_pilot.infrastructure.profiles import (
+    _SAVE_REDIRECT_RELEASE,
     ByteFetcher,
     ImportedProfile,
     ProfileImportError,
@@ -26,6 +27,7 @@ from mod_debug_pilot.infrastructure.profiles import (
     _confined_target,
     _install_package,
     _package_target,
+    _save_redirect_asset,
     extract_bundle,
 )
 
@@ -282,9 +284,7 @@ def test_workspace_materialize_edit_bundle_and_extract(*, tmp_path: Path) -> Non
 
     assert (profile / "winhttp.dll").read_bytes() == b"doorstop"
     assert (profile / "BepInEx/plugins/ModDebugPilotLocal/Local.dll").is_file()
-    assert (
-        profile / "BepInEx/plugins/ModDebugPilotSafety/ModDebugPilot.SaveRedirector.dll"
-    ).is_file()
+    assert (profile / "BepInEx/plugins/ModDebugPilotSafety/com.aoirint.SaveRedirect.dll").is_file()
     assert len(fetcher.calls) == 1
     configs = workspace.config_files(profile=profile)
     assert [path.name for path in configs] == ["com.example.cfg"]
@@ -307,6 +307,33 @@ def test_workspace_materialize_edit_bundle_and_extract(*, tmp_path: Path) -> Non
     parsed = extract_bundle(archive_bytes=bundle.read_bytes(), destination=extracted)
     assert parsed == manifest
     assert (extracted / "BepInEx/config/com.example.cfg").read_text() == "Enabled = false\n"
+
+
+@pytest.mark.parametrize(
+    ("lock", "plugin", "message"),
+    [
+        ("{", b"plugin", "unreadable"),
+        ("{}", b"plugin", "provenance lock"),
+        (
+            json.dumps(_SAVE_REDIRECT_RELEASE),
+            b"plugin",
+            "digest",
+        ),
+    ],
+)
+def test_save_redirect_asset_rejects_invalid_dependency(
+    *, tmp_path: Path, lock: str, plugin: bytes, message: str
+) -> None:
+    """Malformed provenance and mismatched DLL bytes fail before profile creation."""
+    package = tmp_path / "mod_debug_pilot" / "assets"
+    package.mkdir(parents=True)
+    (package / "save_redirect.lock.json").write_text(lock, encoding="utf-8")
+    (package / "com.aoirint.SaveRedirect.dll").write_bytes(plugin)
+    with (
+        patch("mod_debug_pilot.infrastructure.profiles.files", return_value=package.parent),
+        pytest.raises(ProfileImportError, match=message),
+    ):
+        _save_redirect_asset()
 
 
 def test_workspace_rejections_and_cleanup(*, tmp_path: Path) -> None:

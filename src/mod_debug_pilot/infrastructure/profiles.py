@@ -30,6 +30,18 @@ _MAX_PROFILE_RESPONSE: Final = 32 * 1024 * 1024
 _MAX_PACKAGE_RESPONSE: Final = 256 * 1024 * 1024
 _MAX_EXPANDED_PROFILE: Final = 2 * 1024 * 1024 * 1024
 _MAX_FILE_COUNT: Final = 20_000
+_SAVE_REDIRECT_FILE: Final = "com.aoirint.SaveRedirect.dll"
+_SAVE_REDIRECT_RELEASE: Final = {
+    "schema_version": 1,
+    "repository": "https://github.com/aoirint/SaveRedirect",
+    "commit": "59b2736724ffe729612f05dbf6a2899d1ebb1660",
+    "version": "0.1.0",
+    "file": _SAVE_REDIRECT_FILE,
+    "sha256": "3c061d721bd069007bd1d0c39a19792c9dbce795a2387aebbfb2983097d9ef31",
+    "plugin_guid": "com.aoirint.SaveRedirect",
+    "environment_variable": "SAVE_REDIRECT_ROOT",
+    "ready_marker": "[SAVEREDIRECT] ready",
+}
 
 
 class ProfileImportError(ValueError):
@@ -199,10 +211,7 @@ class ProfileWorkspace:
             shutil.copy2(local_mod, local_dir / local_mod.name)
             safety_dir = destination / "BepInEx" / "plugins" / "ModDebugPilotSafety"
             safety_dir.mkdir(parents=True, exist_ok=True)
-            redirector = files("mod_debug_pilot").joinpath(
-                "assets/ModDebugPilot.SaveRedirector.dll"
-            )
-            (safety_dir / "ModDebugPilot.SaveRedirector.dll").write_bytes(redirector.read_bytes())
+            (safety_dir / _SAVE_REDIRECT_FILE).write_bytes(_save_redirect_asset())
             _validate_materialized_profile(profile=destination)
         except BaseException:
             shutil.rmtree(destination, ignore_errors=True)
@@ -446,6 +455,21 @@ def _validate_materialized_profile(*, profile: Path) -> None:
     )
     if not all(path.is_file() for path in required):
         raise ProfileImportError("Profile does not contain a complete BepInEx 5 bootstrap.")
+
+
+def _save_redirect_asset() -> bytes:
+    """Load the independently built plugin only when its provenance lock matches."""
+    package = files("mod_debug_pilot")
+    try:
+        metadata = json.loads(package.joinpath("assets/save_redirect.lock.json").read_text())
+        plugin = package.joinpath(f"assets/{_SAVE_REDIRECT_FILE}").read_bytes()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProfileImportError("Bundled SaveRedirect dependency is unreadable.") from error
+    if metadata != _SAVE_REDIRECT_RELEASE:
+        raise ProfileImportError("Bundled SaveRedirect provenance lock is invalid.")
+    if hashlib.sha256(plugin).hexdigest() != metadata["sha256"]:
+        raise ProfileImportError("Bundled SaveRedirect digest does not match its provenance lock.")
+    return plugin
 
 
 def _validate_thunderstore_url(*, url: str) -> None:

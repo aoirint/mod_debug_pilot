@@ -30,17 +30,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/test-source
 
-  save-redirector:
-    runs-on: windows-2025
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/test-save-redirector
-
   build-windows:
-    needs: [lint, test, save-redirector]
+    needs: [lint, test]
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
@@ -72,7 +63,22 @@ jobs:
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $expected = (Get-FileHash -Algorithm SHA256 src/mod_debug_pilot/assets/ModDebugPilot.SaveRedirector.dll).Hash
+          $lockPath = 'src/mod_debug_pilot/assets/save_redirect.lock.json'
+          $lock = Get-Content $lockPath -Raw | ConvertFrom-Json
+          if (
+            $lock.repository -ne 'https://github.com/aoirint/SaveRedirect' -or
+            $lock.file -ne 'com.aoirint.SaveRedirect.dll' -or
+            $lock.plugin_guid -ne 'com.aoirint.SaveRedirect' -or
+            $lock.environment_variable -ne 'SAVE_REDIRECT_ROOT' -or
+            $lock.ready_marker -ne '[SAVEREDIRECT] ready'
+          ) {
+            throw 'SaveRedirect provenance lock has an unexpected contract.'
+          }
+          $expected = $lock.sha256.ToUpperInvariant()
+          $local = (Get-FileHash -Algorithm SHA256 src/mod_debug_pilot/assets/com.aoirint.SaveRedirect.dll).Hash
+          if ($local -ne $expected) {
+            throw 'SaveRedirect DLL differs from its provenance lock.'
+          }
           $archives = @(
             Get-ChildItem dist -Filter *.whl -File
             Get-Item build/windows/data/flutter_assets/app/app.zip
@@ -90,9 +96,10 @@ jobs:
               }) {
                 throw "Repository development or secret-shaped path found in $($archive.Name)."
               }
-              $dll = $zip.Entries | Where-Object FullName -eq 'mod_debug_pilot/assets/ModDebugPilot.SaveRedirector.dll'
-              if ($null -eq $dll) {
-                throw "Embedded save redirector missing from $($archive.Name)."
+              $dll = $zip.Entries | Where-Object FullName -eq 'mod_debug_pilot/assets/com.aoirint.SaveRedirect.dll'
+              $embeddedLock = $zip.Entries | Where-Object FullName -eq 'mod_debug_pilot/assets/save_redirect.lock.json'
+              if ($null -eq $dll -or $null -eq $embeddedLock) {
+                throw "Embedded SaveRedirect dependency or lock missing from $($archive.Name)."
               }
               $stream = $dll.Open()
               try {
@@ -106,7 +113,16 @@ jobs:
                 $stream.Dispose()
               }
               if ($actual -ne $expected) {
-                throw "Embedded save redirector differs in $($archive.Name)."
+                throw "Embedded SaveRedirect dependency differs in $($archive.Name)."
+              }
+              $reader = [IO.StreamReader]::new($embeddedLock.Open())
+              try {
+                $embeddedLockText = $reader.ReadToEnd()
+              } finally {
+                $reader.Dispose()
+              }
+              if ($embeddedLockText.Trim() -ne (Get-Content $lockPath -Raw).Trim()) {
+                throw "Embedded SaveRedirect provenance lock differs in $($archive.Name)."
               }
             } finally {
               $zip.Dispose()

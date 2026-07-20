@@ -84,7 +84,7 @@ class FakeLauncher:
         if self.ready:
             preloader = Path(arguments[arguments.index("--doorstop-target") + 1])
             (preloader.parents[1] / "LogOutput.log").write_text(
-                "[MODDEBUGPILOT] save_redirect_ready\n",
+                "[SAVEREDIRECT] ready\n",
                 encoding="utf-8",
             )
         return self.process
@@ -363,7 +363,7 @@ def test_runtime_install_launch_capture_stop_and_artifact(*, tmp_path: Path) -> 
         )
         snapshot = await runtime.launch(spec=InstanceSpec(name="host", profile_id="profile-1"))
         assert snapshot.status is InstanceStatus.RUNNING
-        assert "MODDEBUGPILOT_SAVE_ROOT" in launcher.environment
+        assert "SAVE_REDIRECT_ROOT" in launcher.environment
         assert "SECRET" not in launcher.environment
         assert "--doorstop-target" in launcher.arguments
         capture = await runtime.capture(instance_id=snapshot.instance_id)

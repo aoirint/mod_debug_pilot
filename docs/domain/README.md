@@ -7,6 +7,6 @@ independently of ModDebugPilot.
   Windows, BepInEx, and Unity integration scope.
 - [Dependency baseline](dependency-baseline.md) records the locked Python graph
   and reviewed CI action provenance.
-- [Lethal Company v81 save evidence](lethal-company-v81-save-evidence.md)
-  records the exact managed-code and serialized-asset evidence behind save
-  isolation.
+- [SaveRedirect](https://github.com/aoirint/SaveRedirect) owns the exact
+  managed-code and serialized-asset evidence behind save isolation. This
+  repository pins one reviewed build through its asset provenance lock.

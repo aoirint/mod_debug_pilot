@@ -3,16 +3,16 @@
 ## Contract
 
 `.github/workflows/pull-request.yml` validates pull requests and merge-queue
-groups. `.github/workflows/main.yml` re-runs the same lint, Python test, and
-save-redirector checks for each exact `main` commit, then makes the Windows
-build depend directly on all three jobs. Neither workflow has a manual-dispatch
+groups. `.github/workflows/main.yml` re-runs the same lint and Python test checks
+for each exact `main` commit, then makes the Windows build depend directly on
+both jobs. Neither workflow has a manual-dispatch
 surface because no diagnostic or recovery input contract is currently defined.
 
 The Linux source jobs use the explicit `ubuntu-24.04` image rather than
 `ubuntu-slim`: this project has not yet completed a representative slim-run
-compatibility and resource assessment. C# validation and Windows packaging use
-the explicit `windows-2025` image because they establish the Windows artifact
-contract. All jobs have read-only repository contents, and pull-request
+compatibility and resource assessment. Windows packaging uses the explicit
+`windows-2025` image because it establishes the Windows artifact contract. All
+jobs have read-only repository contents, and pull-request
 concurrency cancels superseded proposed-source runs. No job receives release or
 signing credentials.
 
@@ -22,17 +22,14 @@ The job verifies:
 - Ruff lint and formatting;
 - strict mypy;
 - 100% Python statement and branch coverage;
-- NuGet locked-mode restore;
-- C# formatting and warnings-as-errors Release build;
-- save-root path-confinement tests;
-- byte equality between the locked helper build and embedded DLL; and
+- SaveRedirect provenance-lock and embedded-DLL digest equality; and
 - wheel and sdist construction, Windows Flet packaging, archive inspection,
   SHA-256 manifest generation, and retention of the exact `main` build output.
 
 The reusable local Composite Actions own only same-runner setup/check sequences:
-Python setup, workflow lint tools, source linting, Python tests, and the C# save
-redirector test. Workflow files retain event ownership, runner selection,
-permissions, direct `needs` gates, and artifact retention.
+Python setup, workflow lint tools, source linting, and Python tests. Workflow
+files retain event ownership, runner selection, permissions, direct `needs`
+gates, and artifact retention.
 
 ## Local workflow checks
 

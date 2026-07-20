@@ -2,7 +2,7 @@
 
 This design depends on the [target platform](../domain/target-platform.md),
 [dependency baseline](../domain/dependency-baseline.md), and
-[Lethal Company v81 save evidence](../domain/lethal-company-v81-save-evidence.md).
+[SaveRedirect's Lethal Company v81 save evidence](https://github.com/aoirint/SaveRedirect/blob/main/docs/domain/lethal-company-v81-save-paths.md).
 
 ## Runtime topology
 
@@ -43,8 +43,8 @@ and local approval.
 4. Download exact enabled package versions only from Thunderstore HTTPS hosts.
 5. Extract recognized BepInEx, Doorstop, and root-plugin DLL layouts without
    links, traversal, unbounded expansion, or executable package scripts.
-6. Add the uploaded local DLL and bundled save redirector to dedicated plugin
-   directories.
+6. Add the uploaded local DLL and the pinned SaveRedirect artifact to dedicated
+   plugin directories after verifying its provenance lock and SHA-256 digest.
 7. Permit edits only to existing bounded `.cfg`, `.ini`, and `.json` files.
 8. Create a profile ZIP whose manifest fixes every relative path, size, and
    SHA-256 digest. Revalidate it before installing an immutable profile.
@@ -58,9 +58,9 @@ install rule.
 
 The Agent tracks the exact process handle it launched. Each instance receives a
 fixed windowed resolution, unique Mono debugger port, copied profile, artifact
-directory, and `MODDEBUGPILOT_SAVE_ROOT`. A bundled BepInEx plugin patches the
-ES3 `FullPath` getter for file saves rooted at `PersistentDataPath` and confines
-the result below that instance root.
+directory, and `SAVE_REDIRECT_ROOT`. The independently maintained SaveRedirect
+BepInEx plugin patches the ES3 `FullPath` getter for file saves rooted at
+`PersistentDataPath` and confines the result below that instance root.
 
 The launch becomes `running` only after the plugin logs its ready marker.
 Early exit or a 30-second timeout terminates the process and rolls back the

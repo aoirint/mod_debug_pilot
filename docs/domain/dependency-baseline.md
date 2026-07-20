@@ -24,14 +24,13 @@ document does not duplicate them.
 Dependencies cannot update outside an intentional lock review and the
 seven-day cooldown.
 
-## Save redirector graph
+## SaveRedirect artifact
 
-`global.json` selects .NET SDK 10.0.201 with patch-only roll-forward. The helper
-targets .NET Standard 2.1 and locks BepInEx.Core 5.4.21,
-LethalCompany.GameLibs.Steam 81.0.5-ngd.0, UnityEngine.Modules 2022.3.62,
-BepInEx.Analyzers 1.0.8, and BepInEx.PluginInfoProps 2.1.0 plus their transitive
-graphs. `nuget.config` clears inherited sources and maps packages between the
-official NuGet and BepInEx feeds. Restore uses `--locked-mode`.
+`src/mod_debug_pilot/assets/save_redirect.lock.json` pins SaveRedirect 0.1.0 by
+repository, full source commit, runtime contract, file name, and SHA-256 digest.
+The application revalidates the lock and DLL before creating a profile. The
+independent SaveRedirect repository owns its source graph, NuGet locks, tests,
+package validation, and Lethal Company v81 evidence.
 
 ## GitHub Actions
 
@@ -41,13 +40,12 @@ The CI workflow uses only:
   `9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0`;
 - `astral-sh/setup-uv` v8.1.0 at
   `08807647e7069bb48b6ef5acd8ec9567f424441b`; and
-- `actions/setup-dotnet` v5.4.0 at
-  `26b0ec14cb23fa6904739307f278c14f94c95bf1`.
+- `actions/upload-artifact` v6.0.0 at
+  `b7c566a772e6b6bfb58ed0dc250532a479d7789f`.
 
 All references are full commit SHAs from their official GitHub repositories and
-were older than seven days when adopted on 2026-07-20. setup-dotnet v6.0.0 was
-intentionally not adopted because its tag was less than seven days old. `pinact`
-enforces the age and pin policy.
+were older than seven days when adopted on 2026-07-20. `pinact` enforces the age
+and pin policy.
 
 Update this document after any direct dependency constraint, lock graph, action
 reference, package source, or runtime-permission change.

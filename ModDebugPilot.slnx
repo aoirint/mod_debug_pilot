@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="helpers/ModDebugPilot.SaveRedirector/ModDebugPilot.SaveRedirector.csproj" />
-  <Project Path="helpers/ModDebugPilot.SaveRedirector.Tests/ModDebugPilot.SaveRedirector.Tests.csproj" />
-</Solution>

@@ -16,8 +16,9 @@ game instances. A separate pinned-TLS, signed API is available for automation.
 - Add a locally selected Debug mod DLL and edit imported UTF-8 mod configs.
 - Install a manifest-and-SHA-256-verified profile on the Agent.
 - Launch, list, screenshot, and stop multiple tracked Lethal Company instances.
-- Give every instance a distinct injected ES3 save root through a bundled
-  BepInEx 5 helper plugin.
+- Give every instance a distinct injected ES3 save root through a pinned build
+  of the independent [SaveRedirect](https://github.com/aoirint/SaveRedirect)
+  BepInEx 5 plugin.
 - Journal and restore normal saves plus the shared Doorstop bootstrap after the
   final instance, shutdown, startup recovery, or failed launch.
 - Expose a signed, certificate-pinned automation API without an arbitrary shell,
@@ -34,8 +35,7 @@ state, and game processes remain owned by the Agent workstation.
 - Steam and Lethal Company v81 installed by the operator
 - Network isolation or a host firewall restricting ports 48950 and 48951 to the
   intended LAN controller
-- Python 3.12, [.NET SDK 10.0.201](global.json), and
-  [uv](https://docs.astral.sh/uv/) for source development
+- Python 3.12 and [uv](https://docs.astral.sh/uv/) for source development
 
 ## Start the Agent
 
@@ -73,7 +73,7 @@ package redirects, response sizes, file counts, upload sizes, artifact paths,
 identifiers, signatures, timestamps, and nonces are validated before effects.
 
 Save isolation is fail-closed: a game process must emit
-`[MODDEBUGPILOT] save_redirect_ready` from the bundled BepInEx plugin within 30
+`[SAVEREDIRECT] ready` from the pinned SaveRedirect plugin within 30
 seconds or the Agent terminates it. Normal saves are also moved under a journaled
 outer transaction as defense in depth and are restored automatically after the
 last instance.
@@ -91,8 +91,8 @@ evidence, dependency provenance, workstation recovery, and verification steps.
 
 ## Status and license
 
-The project is pre-release (`0.1.0.dev0`). The application, helper plugin, wheel,
-and sdist are verified locally; a signed Windows installer and release channel
-are not configured.
+The project is pre-release (`0.1.0.dev0`). The application, pinned SaveRedirect
+artifact, wheel, and sdist are verified locally; a signed Windows installer and
+release channel are not configured.
 
 [MIT](LICENSE)

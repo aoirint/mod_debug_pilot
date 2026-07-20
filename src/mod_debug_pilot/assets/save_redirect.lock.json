@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/aoirint/SaveRedirect",
+  "commit": "59b2736724ffe729612f05dbf6a2899d1ebb1660",
+  "version": "0.1.0",
+  "file": "com.aoirint.SaveRedirect.dll",
+  "sha256": "3c061d721bd069007bd1d0c39a19792c9dbce795a2387aebbfb2983097d9ef31",
+  "plugin_guid": "com.aoirint.SaveRedirect",
+  "environment_variable": "SAVE_REDIRECT_ROOT",
+  "ready_marker": "[SAVEREDIRECT] ready"
+}
