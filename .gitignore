@@ -34,3 +34,6 @@ Thumbs.db
 # Agent-local workspaces
 .agents/worktrees/
 .agents/references/
+
+# APM dependencies
+apm_modules/

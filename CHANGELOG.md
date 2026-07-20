@@ -5,6 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- Pin and deploy the repository's Flet, game-analysis, cross-repository, and
+  quality workflow Skills through APM.
+
 ### Removed
 
 - Removed the redundant `SECURITY.md`; contribution policy now owns private

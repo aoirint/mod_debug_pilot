@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit Message Quality Check"
+  short_description: "Review Conventional Commit messages."
+  default_prompt: "Use $commit-message-quality-check to draft or review this commit message for Conventional Commits format, accuracy, and required trailers."
