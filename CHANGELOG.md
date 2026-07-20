@@ -53,6 +53,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Fixed Windows CI extraction of the single-line `.python-version` file before
   configuring the exact locked Python toolchain.
+- Forced UTF-8 mode for the Flet Windows build so Rich progress output does not
+  fail under a runner's legacy console encoding.
 
 ### Security
 

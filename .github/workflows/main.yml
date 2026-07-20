@@ -57,7 +57,10 @@ jobs:
         run: uv sync --locked --all-groups
       - shell: pwsh
         run: uv build
-      - shell: pwsh
+      - name: Build Windows app
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
         run: uv run --locked flet build windows --no-rich-output --yes
       - name: Inspect packaged Python and Windows archives
         shell: pwsh
