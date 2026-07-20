@@ -49,6 +49,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Enabled Ruff preview enforcement for zero project-owned positional arguments,
   backed by the Flet project mechanical baseline check.
 
+### Fixed
+
+- Fixed Windows CI extraction of the single-line `.python-version` file before
+  configuring the exact locked Python toolchain.
+
 ### Security
 
 - Restricted Thunderstore redirects to its HTTPS domain, bounded archive and

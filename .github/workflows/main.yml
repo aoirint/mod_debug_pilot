@@ -41,7 +41,7 @@ jobs:
       - id: toolchain
         shell: pwsh
         run: |
-          $versions = Get-Content .python-version
+          $versions = @(Get-Content .python-version)
           if ($versions.Count -ne 1 -or [string]::IsNullOrWhiteSpace($versions[0])) {
             throw ".python-version must select exactly one Python version."
           }
