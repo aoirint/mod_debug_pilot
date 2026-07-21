@@ -507,8 +507,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12,<4" },
-    { name = "flet", extras = ["desktop"], specifier = ">=0.85,<0.87" },
-    { name = "flet-web", specifier = ">=0.85,<0.87" },
+    { name = "flet", extras = ["desktop"], specifier = "==0.85.3" },
+    { name = "flet-web", specifier = "==0.85.3" },
     { name = "pillow", specifier = ">=11.3,<13" },
     { name = "pyyaml", specifier = ">=6.0.2,<7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
@@ -516,7 +516,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "flet-cli", specifier = ">=0.85,<0.86" },
+    { name = "flet-cli", specifier = "==0.85.3" },
     { name = "mypy", specifier = ">=1.17,<2" },
     { name = "pytest", specifier = ">=8.4,<10" },
     { name = "pytest-cov", specifier = ">=6.2,<8" },

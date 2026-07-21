@@ -15,10 +15,14 @@ Direct runtime dependencies:
 - Uvicorn provides the Agent-owned trusted-LAN HTTP ASGI listener.
 
 Direct developer dependencies are Flet CLI 0.85.3, mypy 1.20.2, pytest 9.1.1,
-pytest-cov 7.1.0, Ruff 0.14.14, and PyYAML type stubs. Flet CLI is explicit
-because the `flet` launcher otherwise installs its CLI surface at runtime. The
-complete transitive graph and artifact hashes are owned by `uv.lock`; this
-document does not duplicate them.
+pytest-cov 7.1.0, Ruff 0.14.14, and PyYAML type stubs. `flet`,
+`flet-desktop`, `flet-web`, and `flet-cli` are fixed to the same exact version.
+`flet build` resolves packaged Python dependencies from the declared project
+requirements rather than reproducing `uv.lock`, so a compatible range can
+otherwise put a newer Python server beside an older Flutter client and prevent
+the first page from mounting. `uv.lock` owns the local and CI environment
+graph; the final bundle is inspected separately for matching Python, CLI, and
+Flutter Flet versions.
 
 Dependencies cannot update outside an intentional lock review and the
 seven-day cooldown.
