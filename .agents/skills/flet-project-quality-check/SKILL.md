@@ -139,7 +139,8 @@ informal list.
 
 ## Completion Checklist
 
-- Target Python/Flet/platform and app identity are explicit and consistent.
+- Target Python/Flet/platform and app identity are explicit and consistent, including packaged
+  Python/CLI/Flutter Flet compatibility and a semantic first-page startup check.
 - Domain/application code imports no Flet or concrete infrastructure.
 - Presentation state and transitions are immutable or otherwise centrally owned and independently tested.
 - Flet controls render state and emit intents; they do not own business workflows or hidden task state.
