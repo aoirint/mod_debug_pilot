@@ -157,7 +157,9 @@ exist. Required documentation indexes may explicitly state that a section has no
    partial/stale, error, retrying, success, and disabled states that apply.
 2. Define responsive and platform-adaptive behavior for every supported target/window class.
 3. Verify forms, double submission, focus/error behavior, Back/deep-link/unknown route, unsaved
-   changes, keyboard traversal, semantics, text scaling, contrast, and status without color.
+   changes, keyboard traversal, semantics, text scaling, contrast, and status without color. For
+   local path inputs, verify editable text plus supported native file/directory selection, cancel
+   preservation, target capability differences, and state-synchronized picker availability.
 4. Keep UI tests semantic. Add targeted manual/runtime checks for behavior that Flet adapters/fakes
    cannot prove.
 
