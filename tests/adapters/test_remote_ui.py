@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
@@ -337,9 +337,34 @@ def test_agent_view_complete_ui_flow() -> None:
             page=cast(ft.Page, page),
             controller=cast(AgentController, controller),
         )
+        cast(Any, view._picker).pick_files = AsyncMock(  # noqa: SLF001
+            return_value=[SimpleNamespace(path=r"C:\Games\Lethal Company.exe")]
+        )
+        await view._choose_game_executable(  # noqa: SLF001
+            ft.Event("click", ft.OutlinedButton())
+        )
+        assert view.fields["game_executable"].value == r"C:\Games\Lethal Company.exe"
+        cast(Any, view._picker).get_directory_path = AsyncMock(  # noqa: SLF001
+            side_effect=[r"C:\MDP\data", r"C:\MDP\artifacts", r"C:\LC\saves", None]
+        )
+        for field_name in ("data_root", "artifact_root", "save_directory"):
+            callback = cast(
+                Callable[[ft.Event[ft.OutlinedButton]], Awaitable[None]],
+                view.path_buttons[field_name].on_click,
+            )
+            await callback(ft.Event("click", view.path_buttons[field_name]))
+        assert view.fields["data_root"].value == r"C:\MDP\data"
+        assert view.fields["artifact_root"].value == r"C:\MDP\artifacts"
+        assert view.fields["save_directory"].value == r"C:\LC\saves"
+        canceled = cast(
+            Callable[[ft.Event[ft.OutlinedButton]], Awaitable[None]],
+            view.path_buttons["data_root"].on_click,
+        )
+        await canceled(ft.Event("click", view.path_buttons["data_root"]))
         await view._start(ft.Event("click", ft.Button()))  # noqa: SLF001
         view._render()  # noqa: SLF001
         assert view.start_button.disabled
+        assert all(button.disabled for button in view.path_buttons.values())
         await view._open_pairing(ft.Event("click", ft.Button()))  # noqa: SLF001
         await view._refresh_pending(ft.Event("click", ft.OutlinedButton()))  # noqa: SLF001
         view._render()  # noqa: SLF001
@@ -361,6 +386,29 @@ def test_agent_view_complete_ui_flow() -> None:
         await view.close()
         assert controller.closed == 1
         assert page.update_count > 0
+
+    asyncio.run(scenario())
+
+
+def test_agent_file_picker_cancellation_preserves_the_path() -> None:
+    """Canceling or receiving a pathless file selection keeps typed input."""
+
+    async def scenario() -> None:
+        page = FakePage()
+        controller = AgentControllerStub()
+        view = AgentView(
+            page=cast(ft.Page, page),
+            controller=cast(AgentController, controller),
+        )
+        original = view.fields["game_executable"].value
+        cast(Any, view._picker).pick_files = AsyncMock(  # noqa: SLF001
+            side_effect=[None, [SimpleNamespace(path=None)]]
+        )
+        event = ft.Event("click", ft.OutlinedButton())
+        await view._choose_game_executable(event)  # noqa: SLF001
+        await view._choose_game_executable(event)  # noqa: SLF001
+        assert view.fields["game_executable"].value == original
+        assert page.update_count == 0
 
     asyncio.run(scenario())
 

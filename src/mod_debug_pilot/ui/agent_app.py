@@ -17,6 +17,7 @@ class AgentView:
         """Create controls from the controller's initial state."""
         self._page = page
         self._controller = controller
+        self._picker = ft.FilePicker()
         defaults = controller.state.settings
         self.fields = {
             "agent_name": ft.TextField(label="Agent name", value=defaults.agent_name),
@@ -29,6 +30,41 @@ class AgentView:
             "artifact_root": ft.TextField(label="Artifact root", value=defaults.artifact_root),
             "save_directory": ft.TextField(
                 label="Lethal Company save directory", value=defaults.save_directory
+            ),
+        }
+        for name in ("game_executable", "data_root", "artifact_root", "save_directory"):
+            self.fields[name].expand = True
+        self.path_buttons = {
+            "game_executable": ft.OutlinedButton(
+                "Browse…",
+                icon=ft.Icons.FILE_OPEN,
+                tooltip="Select the Lethal Company executable",
+                on_click=self._choose_game_executable,
+            ),
+            "data_root": ft.OutlinedButton(
+                "Browse…",
+                icon=ft.Icons.FOLDER_OPEN,
+                tooltip="Select the Agent data directory",
+                on_click=self._directory_picker_handler(
+                    field_name="data_root", dialog_title="Select Agent data directory"
+                ),
+            ),
+            "artifact_root": ft.OutlinedButton(
+                "Browse…",
+                icon=ft.Icons.FOLDER_OPEN,
+                tooltip="Select the artifact directory",
+                on_click=self._directory_picker_handler(
+                    field_name="artifact_root", dialog_title="Select artifact directory"
+                ),
+            ),
+            "save_directory": ft.OutlinedButton(
+                "Browse…",
+                icon=ft.Icons.FOLDER_OPEN,
+                tooltip="Select the normal Lethal Company save directory",
+                on_click=self._directory_picker_handler(
+                    field_name="save_directory",
+                    dialog_title="Select normal Lethal Company save directory",
+                ),
             ),
         }
         self.status = ft.Text(selectable=True)
@@ -76,7 +112,15 @@ class AgentView:
                 ]
             ),
         )
-        settings_controls = list(self.fields.values())
+        settings_controls = [
+            self.fields["agent_name"],
+            self.fields["bind_host"],
+            self.fields["web_port"],
+            self._path_row(field_name="game_executable"),
+            self._path_row(field_name="data_root"),
+            self._path_row(field_name="artifact_root"),
+            self._path_row(field_name="save_directory"),
+        ]
         status_card = self._card(
             title="Controller listener",
             controls=[
@@ -157,6 +201,40 @@ class AgentView:
                 ),
             )
         )
+
+    def _path_row(self, *, field_name: str) -> ft.Control:
+        return ft.Row(
+            [self.fields[field_name], self.path_buttons[field_name]],
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+    async def _choose_game_executable(  # keyword-only-exception: Flet callback ABI.
+        self, _event: ft.Event[ft.OutlinedButton]
+    ) -> None:
+        files = await self._picker.pick_files(
+            dialog_title="Select Lethal Company executable",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["exe"],
+            allow_multiple=False,
+        )
+        if not files or files[0].path is None:
+            return
+        self.fields["game_executable"].value = files[0].path
+        self._page.update()
+
+    def _directory_picker_handler(
+        self, *, field_name: str, dialog_title: str
+    ) -> Callable[[ft.Event[ft.OutlinedButton]], Awaitable[None]]:
+        async def handler(  # keyword-only-exception: Flet callback ABI.
+            _event: ft.Event[ft.OutlinedButton],
+        ) -> None:
+            selected = await self._picker.get_directory_path(dialog_title=dialog_title)
+            if selected is None:
+                return
+            self.fields[field_name].value = selected
+            self._page.update()
+
+        return handler
 
     async def _start(  # keyword-only-exception: Flet callback ABI.
         self, _event: ft.Event[ft.Button]
@@ -281,6 +359,8 @@ class AgentView:
         self.open_pairing_button.disabled = not state.running
         for field in self.fields.values():
             field.disabled = state.running
+        for button in self.path_buttons.values():
+            button.disabled = state.running
 
     def _render_and_update(self) -> None:
         self._render()

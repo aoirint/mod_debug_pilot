@@ -43,6 +43,8 @@ uv run --locked moddebugpilot
 In the native window:
 
 1. Set the game executable, Agent data, artifacts, and normal-save directory.
+   Each path accepts direct text entry and provides a native **Browse…** file or
+   directory picker.
 2. Select **Start controller**.
 3. Open the displayed Controller URL from the trusted private LAN.
 4. Select **Open pairing window**, submit its code in the browser, and approve
