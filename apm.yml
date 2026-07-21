@@ -12,7 +12,7 @@ dependencies:
   - aoirint/skills/.apm/skills/changelog-workflow#7a4042304705253bd5d15f17c3387dc655b11ea0
   - aoirint/skills/.apm/skills/code-quality-check#7a4042304705253bd5d15f17c3387dc655b11ea0
   - aoirint/skills/.apm/skills/commit-message-quality-check#7a4042304705253bd5d15f17c3387dc655b11ea0
-  - aoirint/skills/.apm/skills/flet-project-quality-check#26346eacca27812994a8625b2959180aac774276
+  - aoirint/skills/.apm/skills/flet-project-quality-check#0d0e417cb2d5f9ddfef371f18309994fb5299830
   - aoirint/skills/.apm/skills/git-worktree-workflow#7a4042304705253bd5d15f17c3387dc655b11ea0
   - aoirint/skills/.apm/skills/github-actions-quality-check#7a4042304705253bd5d15f17c3387dc655b11ea0
   - aoirint/skills/.apm/skills/gitignore-workflow#7a4042304705253bd5d15f17c3387dc655b11ea0
