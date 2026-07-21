@@ -10,8 +10,8 @@ authors = [
 ]
 dependencies = [
     "aiohttp>=3.12,<4",
-    "flet[desktop]>=0.85,<0.87",
-    "flet-web>=0.85,<0.87",
+    "flet[desktop]==0.85.3",
+    "flet-web==0.85.3",
     "pillow>=11.3,<13",
     "pyyaml>=6.0.2,<7",
     "uvicorn[standard]>=0.35,<1",
@@ -30,7 +30,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "flet-cli>=0.85,<0.86",
+    "flet-cli==0.85.3",
     "mypy>=1.17,<2",
     "pytest>=8.4,<10",
     "pytest-cov>=6.2,<8",

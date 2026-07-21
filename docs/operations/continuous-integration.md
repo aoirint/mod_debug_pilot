@@ -23,8 +23,9 @@ The job verifies:
 - strict mypy;
 - 100% Python statement and branch coverage;
 - SaveRedirect provenance-lock and embedded-DLL digest equality; and
-- wheel and sdist construction, Windows Flet packaging, archive inspection,
-  SHA-256 manifest generation, and retention of the exact `main` build output.
+- wheel and sdist construction, Windows Flet packaging, packaged Python/CLI/
+  Flutter Flet version parity, executable startup, archive inspection, SHA-256
+  manifest generation, and retention of the exact `main` build output.
 
 The reusable local Composite Actions own only same-runner setup/check sequences:
 Python setup, workflow lint tools, source linting, and Python tests. Workflow
@@ -47,8 +48,12 @@ reporting, and release controls cannot be verified from this local repository.
 Review those settings before claiming release readiness.
 
 The `main` artifact is named with its source commit and includes
-`ci-artifacts.json`, recording file SHA-256 values and the uv version. It is a
-validation artifact only; no release, signing, or publication flow is defined.
+`ci-artifacts.json`, recording file SHA-256 values plus the uv and packaged
+Flet versions. The Windows job launches the generated executable with isolated
+application-data directories and requires the initial Agent page title within
+30 seconds. A successful build without this runtime handshake is rejected. The
+bundle is a validation artifact only; no release, signing, or publication flow
+is defined.
 
 Update this runbook when triggers, permissions, runner, action pins, commands,
 repository settings, artifact policy, or release responsibilities change.

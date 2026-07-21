@@ -62,6 +62,80 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: uv run --locked flet build windows --no-rich-output --yes
+      - name: Verify packaged Flet runtime parity
+        id: flet-parity
+        shell: pwsh
+        run: |
+          $version = @'
+          from importlib.metadata import distributions, version
+          from pathlib import Path
+
+          import yaml
+
+          expected = version("flet-cli")
+          packaged = {
+              distribution.metadata["Name"].lower().replace("_", "-"): distribution.version
+              for distribution in distributions(path=["build/windows/site-packages"])
+              if distribution.metadata["Name"]
+          }
+          for name in ("flet", "flet-desktop", "flet-web"):
+              actual = packaged.get(name)
+              if actual != expected:
+                  raise SystemExit(
+                      f"Packaged {name} version {actual!r} does not match Flet CLI {expected}."
+                  )
+
+          flutter_lock = yaml.safe_load(Path("build/flutter/pubspec.lock").read_text(encoding="utf-8"))
+          flutter_version = str(flutter_lock["packages"]["flet"]["version"])
+          if flutter_version != expected:
+              raise SystemExit(
+                  f"Flutter Flet version {flutter_version} does not match Flet CLI {expected}."
+              )
+          print(expected)
+          '@ | uv run --locked python -
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Packaged Flet runtime parity verification failed.'
+          }
+          "version=$($version.Trim())" >> $env:GITHUB_OUTPUT
+      - name: Smoke-test packaged Windows app
+        shell: pwsh
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP 'mod-debug-pilot-smoke'
+          $env:FLET_APP_STORAGE_DATA = Join-Path $smokeRoot 'data'
+          $env:FLET_APP_STORAGE_TEMP = Join-Path $smokeRoot 'temp'
+          $env:FLET_APP_CONSOLE = Join-Path $smokeRoot 'console.log'
+          New-Item -ItemType Directory -Force $env:FLET_APP_STORAGE_DATA | Out-Null
+          New-Item -ItemType Directory -Force $env:FLET_APP_STORAGE_TEMP | Out-Null
+
+          $process = Start-Process build/windows/mod-debug-pilot.exe -PassThru
+          try {
+            $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+            $ready = $false
+            while ([DateTimeOffset]::UtcNow -lt $deadline) {
+              $process.Refresh()
+              if ($process.HasExited) {
+                throw "Packaged app exited before startup completed with code $($process.ExitCode)."
+              }
+              if ($process.MainWindowTitle -eq 'ModDebugPilot Agent') {
+                $ready = $true
+                break
+              }
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not $ready) {
+              throw "Packaged app did not mount its initial Flet page within 30 seconds. Last title: '$($process.MainWindowTitle)'."
+            }
+          } catch {
+            if (Test-Path $env:FLET_APP_CONSOLE) {
+              Write-Host 'Packaged app console log:'
+              Get-Content $env:FLET_APP_CONSOLE
+            }
+            throw
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
       - name: Inspect packaged Python and Windows archives
         shell: pwsh
         run: |
@@ -133,6 +207,8 @@ jobs:
           }
       - id: manifest
         shell: pwsh
+        env:
+          PACKAGED_FLET_VERSION: ${{ steps.flet-parity.outputs.version }}
         run: |
           $files = @(
             Get-ChildItem dist -File
@@ -148,6 +224,7 @@ jobs:
           $manifest = [PSCustomObject]@{
             source_commit = $env:GITHUB_SHA
             uv_version = (& uv --version)
+            flet_version = $env:PACKAGED_FLET_VERSION
             files = $files
           }
           $manifest | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8 ci-artifacts.json
