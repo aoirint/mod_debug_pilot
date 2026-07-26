@@ -45,7 +45,7 @@ the Flet-specific facts those documents must own: supported Flet/Python targets,
 UI state and navigation, task lifetime, component boundaries, platform storage,
 test/build commands, and packaging behavior.
 
-Use `github-actions-quality-check` for workflow triggers, permissions,
+Use `github-workflow` for workflow triggers, permissions,
 concurrency, action pins, actionlint, ShellCheck, and pinact. Use `security-check`
 for package provenance and cooldown, lock changes, secrets, URL/file input,
 downloaded tools, caches, build artifacts, and release credentials. Do not
