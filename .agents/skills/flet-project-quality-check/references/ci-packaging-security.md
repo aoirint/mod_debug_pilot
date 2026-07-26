@@ -12,7 +12,7 @@
 
 ## GitHub Actions quality gate
 
-Use `github-actions-quality-check` and `security-check` while implementing this baseline.
+Use `github-workflow` and `security-check` while implementing this baseline.
 
 - Use separate event-owned entry workflows. The pull-request workflow triggers on `pull_request` and `merge_group` when
   a merge queue uses required checks; it validates proposed source only. The integration-branch workflow triggers on the
@@ -35,7 +35,7 @@ Use `github-actions-quality-check` and `security-check` while implementing this 
 - Never use `pull_request_target` to check out and execute untrusted PR code. Keep release/signing credentials in
   separately triggered, protected jobs/environments.
 - Keep CI commands equal to the documented local commands. CI-only hidden flags and local-only shortcuts are findings.
-- Select runners per job with `github-actions-quality-check`. Start Flet lint, type-check, and unit-test jobs on
+- Select runners per job with `github-workflow`. Start Flet lint, type-check, and unit-test jobs on
   `ubuntu-slim`. Move a job to a full VM only when its required Composite Action, tools, or runtime cannot meet the slim
   container, resource, software, or 15-minute limits; then validate the reason and periodically retry slim. Keep Flet or
   Flutter desktop/mobile builds on a full platform runner; their native toolchains and resource use are not lightweight
