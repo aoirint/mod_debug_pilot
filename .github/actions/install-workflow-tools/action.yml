@@ -1,10 +1,11 @@
 name: Install workflow lint tools
-description: Install checksum-verified actionlint and pinact binaries.
+description: Install checksum-verified actionlint and pinact.
 
 runs:
   using: composite
   steps:
-    - shell: bash
+    - name: Install checksum-verified workflow tools
+      shell: bash
       run: |
         install_tool() {
           local archive="$1" url="$2" sha256="$3" extract="$4" directory="$5"
@@ -12,7 +13,7 @@ runs:
           curl --fail --silent --show-error --location --retry 3 --retry-delay 2 --retry-connrefused --output "${path}" "${url}"
           echo "${sha256}  ${path}" | sha256sum --check --strict -
           mkdir -p "${RUNNER_TEMP}/${directory}"
-          tar -xzf "${path}" -C "${RUNNER_TEMP}/${directory}" "${extract}"
+          tar -xzf "${path}" -C "${RUNNER_TEMP}/${directory}" ${extract}
           echo "${RUNNER_TEMP}/${directory}" >> "$GITHUB_PATH"
         }
         install_tool "actionlint_1.7.12_linux_amd64.tar.gz" "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz" "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8" "actionlint" "actionlint"
