@@ -13,7 +13,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
+  check:
+    name: Check
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -22,7 +23,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Run source checks
-        uses: ./.github/actions/lint-source
+        uses: ./.github/actions/check-python-flet-source
   test:
     name: Test
     runs-on: ubuntu-24.04
@@ -33,4 +34,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Run source tests
-        uses: ./.github/actions/test-source
+        uses: ./.github/actions/test-python-flet-source
