@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Git
-- uv 0.11.21 or a compatible newer version
+- uv 0.12.3 or a compatible newer version
 - Windows 11 for runtime UI and capture checks
 
 ## Setup and verification
