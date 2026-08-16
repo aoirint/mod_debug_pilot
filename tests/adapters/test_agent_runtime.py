@@ -95,8 +95,8 @@ class FakeCapturer:
 
     async def capture(self, *, destination: Path) -> None:
         """Create the requested capture path."""
-        destination.parent.mkdir(parents=True)
-        destination.write_bytes(b"png")
+        await asyncio.to_thread(destination.parent.mkdir, parents=True)
+        await asyncio.to_thread(destination.write_bytes, b"png")
 
 
 class FakeProbe:

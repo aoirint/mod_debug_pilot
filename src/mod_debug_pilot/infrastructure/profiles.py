@@ -137,14 +137,14 @@ class ProfileWorkspace:
         local_mod_bytes: bytes,
     ) -> None:
         """Install exact enabled packages, configs, and one local Debug DLL."""
-        if destination.exists():
+        if await asyncio.to_thread(destination.exists):
             raise ProfileError("Profile workspace already exists.")
         if (
             Path(local_mod_name).name != local_mod_name
             or Path(local_mod_name).suffix.casefold() != ".dll"
         ):
             raise ProfileError("Select a locally built DLL.")
-        destination.mkdir(parents=True)
+        await asyncio.to_thread(destination.mkdir, parents=True)
         try:
             for mod in imported.mods:
                 if not mod.enabled:
