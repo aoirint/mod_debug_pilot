@@ -12,7 +12,7 @@ dependencies = [
     "aiohttp>=3.12,<4",
     "flet[desktop]==0.85.3",
     "flet-web==0.85.3",
-    "pillow>=11.3,<13",
+    "pillow>=11.3,<14",
     "pyyaml>=6.0.2,<7",
     "uvicorn[standard]>=0.35,<1",
 ]
