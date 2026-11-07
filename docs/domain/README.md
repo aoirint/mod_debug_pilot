@@ -3,10 +3,10 @@
 This section owns external APIs and platform behavior that can change
 independently of ModDebugPilot.
 
-- [Target platform](target-platform.md) records the verified Python, Flet,
+- [Target platform](target-platform.md) records the Python, Flet,
   Windows, BepInEx, and Unity integration scope.
 - [Dependency baseline](dependency-baseline.md) records the locked Python graph
-  and reviewed CI action provenance.
+  and CI action provenance.
 - [SaveRedirect](https://github.com/aoirint/SaveRedirect) owns the exact
   managed-code and serialized-asset evidence behind save isolation. This
-  repository pins one reviewed build through its asset provenance lock.
+  repository pins the plugin build through its asset provenance lock.
